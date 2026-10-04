@@ -10,7 +10,7 @@ class MRX_Settings
 {
 	static const string DEFAULT_CURRENCY = "cash";
 
-	[Attribute(MRX_EBackendType.IN_MEMORY.ToString(), UIWidgets.ComboBox, "Wallet storage. IN_MEMORY is lost when the server stops.", enums: ParamEnumArray.FromEnum(MRX_EBackendType))]
+	[Attribute(MRX_EBackendType.NATIVE.ToString(), UIWidgets.ComboBox, "Wallet storage. NATIVE falls back to IN_MEMORY when the world has no Marx persistence config. IN_MEMORY is lost when the server stops.", enums: ParamEnumArray.FromEnum(MRX_EBackendType))]
 	MRX_EBackendType m_eBackend;
 
 	[Attribute("50", desc: "Ledger entries kept per wallet by local backends")]
@@ -27,7 +27,7 @@ class MRX_Settings
 	static MRX_Settings CreateDefault()
 	{
 		MRX_Settings settings = new MRX_Settings();
-		settings.m_eBackend = MRX_EBackendType.IN_MEMORY;
+		settings.m_eBackend = MRX_EBackendType.NATIVE;
 		settings.m_iMaxRecentEntries = 50;
 		settings.m_iMaxRecentKeys = 200;
 		return settings;

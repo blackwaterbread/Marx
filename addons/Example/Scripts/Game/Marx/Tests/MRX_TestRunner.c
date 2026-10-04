@@ -8,6 +8,7 @@ class MRX_TestCase : Managed
 	protected MRX_TestRunner m_Runner;
 	protected ref array<string> m_aFailures = {};
 	protected bool m_bFinished;
+	protected string m_sSkipReason;
 
 	//------------------------------------------------------------------------------------------------
 	void Start(notnull MRX_TestRunner runner)
@@ -26,6 +27,13 @@ class MRX_TestCase : Managed
 	array<string> GetFailures()
 	{
 		return m_aFailures;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Empty unless the test was skipped.
+	string GetSkipReason()
+	{
+		return m_sSkipReason;
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -64,6 +72,13 @@ class MRX_TestCase : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
+	protected void Skip(string reason)
+	{
+		m_sSkipReason = reason;
+		Finish();
+	}
+
+	//------------------------------------------------------------------------------------------------
 	protected void Finish()
 	{
 		if (m_bFinished)
@@ -79,6 +94,8 @@ class MRX_TestRunner : Managed
 {
 	static const string TAG = "[MRX_TEST] ";
 	static const int TIMEOUT_MS = 5000;
+	static const string AUTO_CLOSE_PARAM = "mrxTestsAutoClose";
+	static const int AUTO_CLOSE_DELAY_MS = 2000;
 
 	protected static ref MRX_TestRunner s_Instance;
 
@@ -86,6 +103,7 @@ class MRX_TestRunner : Managed
 	protected int m_iCurrent = -1;
 	protected int m_iPassed;
 	protected int m_iFailed;
+	protected int m_iSkipped;
 
 	//------------------------------------------------------------------------------------------------
 	static void RunAll()
@@ -94,6 +112,7 @@ class MRX_TestRunner : Managed
 		MRX_WalletMathTests.Register(s_Instance);
 		MRX_EconomyServiceTests.Register(s_Instance);
 		MRX_BootstrapTests.Register(s_Instance);
+		MRX_NativeTests.Register(s_Instance);
 		Print(TAG + string.Format("START tests=%1", s_Instance.m_aTests.Count()));
 		s_Instance.RunNext();
 	}
@@ -121,12 +140,24 @@ class MRX_TestRunner : Managed
 		m_iCurrent++;
 		if (m_iCurrent >= m_aTests.Count())
 		{
-			Print(TAG + string.Format("DONE passed=%1 failed=%2", m_iPassed, m_iFailed));
+			Print(TAG + string.Format("DONE passed=%1 failed=%2 skipped=%3", m_iPassed, m_iFailed, m_iSkipped));
+
+			// For automated runs: Workbench started with -mrxTestsAutoClose returns to edit mode.
+			if (System.IsCLIParam(AUTO_CLOSE_PARAM))
+				GetGame().GetCallqueue().CallLater(CloseGame, AUTO_CLOSE_DELAY_MS);
+
 			return;
 		}
 
 		GetGame().GetCallqueue().CallLater(CheckTimeout, TIMEOUT_MS, false, m_iCurrent);
 		m_aTests[m_iCurrent].Start(this);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected static void CloseGame()
+	{
+		Print(TAG + "closing the game (" + AUTO_CLOSE_PARAM + ")");
+		GetGame().RequestClose();
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -143,6 +174,13 @@ class MRX_TestRunner : Managed
 	protected void Report(notnull MRX_TestCase test, bool timedOut)
 	{
 		array<string> failures = test.GetFailures();
+		if (!timedOut && failures.IsEmpty() && !test.GetSkipReason().IsEmpty())
+		{
+			m_iSkipped++;
+			Print(TAG + "SKIP " + test.ClassName() + ": " + test.GetSkipReason());
+			return;
+		}
+
 		if (!timedOut && failures.IsEmpty())
 		{
 			m_iPassed++;

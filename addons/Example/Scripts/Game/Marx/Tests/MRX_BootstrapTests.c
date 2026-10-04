@@ -66,6 +66,9 @@ class MRX_Test_IdentityMapping : MRX_TestCase
 		// No identity: the player stays without owner.
 		identity.SimulateAudit(3);
 		Check(!identity.IsOwnerReady(3), "player without identity is not ready");
+		Check(identity.IsIdentityMissing(3), "missing identity is remembered");
+		identity.SimulateDisconnect(3);
+		Check(!identity.IsIdentityMissing(3), "missing identity forgotten on disconnect");
 		CheckString(identity.GetOwnerId(3), "", "owner of player without identity");
 
 		// The same owner joins as another player before the old session is gone.
@@ -197,7 +200,15 @@ class MRX_Test_SystemBootstrap : MRX_TestCase
 
 		string ownerId;
 		if (!playerIds.IsEmpty())
+		{
+			if (MRX_Marx.GetIdentity().IsIdentityMissing(playerIds[0]))
+			{
+				Skip("the local player has no backend identity in this session");
+				return;
+			}
+
 			ownerId = MRX_Marx.GetOwnerId(playerIds[0]);
+		}
 
 		int balance;
 		bool cached;

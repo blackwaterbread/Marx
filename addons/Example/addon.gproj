@@ -9,7 +9,7 @@ GameProject {
   GameProjectConfig PC {
    SystemModuleSettings SystemModuleSettings "{5F10A1570304557B}" {
     Configs + {
-     "{AEE6AF777A7AC796}Configs/Marx/Spike/MRX_SpikeSystems.conf"
+     "{AEE6AF777A7AC796}Configs/Marx/Spike/MRX_SpikeSystems.conf" "{F0E75858E593A833}Configs/Marx/Systems/MRX_GameMasterSystems.conf"
     }
    }
   }

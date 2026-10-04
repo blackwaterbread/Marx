@@ -1,0 +1,17 @@
+MetaFileClass {
+ Name "{DB6F364D2E1F9EB2}Configs/Marx/Persistence/MRX_GameMasterPersistence.conf"
+ Configurations {
+  CONFResourceClass PC {
+  }
+  CONFResourceClass XBOX_ONE : PC {
+  }
+  CONFResourceClass XBOX_SERIES : PC {
+  }
+  CONFResourceClass PS4 : PC {
+  }
+  CONFResourceClass PS5 : PC {
+  }
+  CONFResourceClass HEADLESS : PC {
+  }
+ }
+}

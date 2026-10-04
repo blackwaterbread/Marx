@@ -10,6 +10,7 @@ class MRX_IdentityService : Managed
 
 	protected ref map<int, string> m_mOwnerIds = new map<int, string>();
 	protected ref map<string, int> m_mPlayerIds = new map<string, int>();
+	protected ref set<int> m_aPlayersWithoutIdentity = new set<int>();
 	protected ref ScriptInvokerBase<MRX_OwnerDelegate> m_OnOwnerReady;
 	protected ref ScriptInvokerBase<MRX_OwnerDelegate> m_OnOwnerLeft;
 
@@ -42,6 +43,13 @@ class MRX_IdentityService : Managed
 	bool IsOwnerReady(int playerId)
 	{
 		return m_mOwnerIds.Contains(playerId);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! True when the player passed the audit but no identity was available (e.g. the backend was unreachable).
+	bool IsIdentityMissing(int playerId)
+	{
+		return m_aPlayersWithoutIdentity.Contains(playerId);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -90,6 +98,7 @@ class MRX_IdentityService : Managed
 	//------------------------------------------------------------------------------------------------
 	protected void OnPlayerDisconnected(int playerId, KickCauseCode cause, int timeout)
 	{
+		m_aPlayersWithoutIdentity.RemoveItem(playerId);
 		UnregisterOwner(playerId);
 	}
 
@@ -110,8 +119,11 @@ class MRX_IdentityService : Managed
 		if (ownerId.IsEmpty())
 		{
 			Print(string.Format("[MRX] Player %1 has no identity, economy features stay disabled for this player", playerId), LogLevel.WARNING);
+			m_aPlayersWithoutIdentity.Insert(playerId);
 			return;
 		}
+
+		m_aPlayersWithoutIdentity.RemoveItem(playerId);
 
 		string currentOwnerId = m_mOwnerIds.Get(playerId);
 		if (currentOwnerId == ownerId)

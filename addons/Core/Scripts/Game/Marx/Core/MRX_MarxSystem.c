@@ -2,7 +2,7 @@
 //! Use MRX_Marx for access.
 class MRX_MarxSystem : GameSystem
 {
-	[Attribute(params: "conf class=MRX_Settings", desc: "Marx settings. Empty uses built-in defaults (in-memory storage, 'cash' currency).")]
+	[Attribute(params: "conf class=MRX_Settings", desc: "Marx settings. Empty uses built-in defaults (native storage with in-memory fallback, 'cash' currency).")]
 	protected ResourceName m_sSettingsConfig;
 
 	protected ref MRX_Settings m_Settings;
@@ -104,9 +104,9 @@ class MRX_MarxSystem : GameSystem
 	protected MRX_StorageBackend CreateBackend()
 	{
 		if (m_Settings.m_eBackend == MRX_EBackendType.NATIVE)
-			Print("[MRX] NATIVE storage is not available yet, using IN_MEMORY", LogLevel.WARNING);
+			return new MRX_NativeBackend();
 
-		Print("[MRX] Wallets are kept in memory only and are lost when the server stops", LogLevel.WARNING);
+		Print("[MRX] IN_MEMORY storage selected: wallets are lost when the server stops", LogLevel.WARNING);
 		return new MRX_InMemoryBackend();
 	}
 
