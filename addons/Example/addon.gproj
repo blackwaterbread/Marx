@@ -1,0 +1,27 @@
+GameProject {
+ ID "Marx_Example"
+ GUID "6A885BDAB90DA1FD"
+ TITLE "Marx Example"
+ Dependencies {
+  "58D0FB3206B6F859" "6A885105A7EC72B9" "6A885683BA928BB5"
+ }
+ Configurations {
+  GameProjectConfig PC {
+   SystemModuleSettings SystemModuleSettings "{5F10A1570304557B}" {
+    Configs + {
+     "{AEE6AF777A7AC796}Configs/Marx/Spike/MRX_SpikeSystems.conf"
+    }
+   }
+  }
+  GameProjectConfig XBOX_ONE {
+  }
+  GameProjectConfig XBOX_SERIES {
+  }
+  GameProjectConfig PS4 {
+  }
+  GameProjectConfig PS5 {
+  }
+  GameProjectConfig HEADLESS {
+  }
+ }
+}

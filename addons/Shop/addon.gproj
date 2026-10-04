@@ -1,0 +1,9 @@
+GameProject {
+ ID "Marx_Shop"
+ GUID "6A885683BA928BB5"
+ TITLE "Marx Shop"
+ Dependencies {
+  "58D0FB3206B6F859"
+  "6A885105A7EC72B9"
+ }
+}

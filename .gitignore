@@ -1,0 +1,5 @@
+# Workbench resource cache
+resourceDatabase.rdb
+
+# enfusion-workbench-mcp dev handlers (remove with wb_cleanup before publish)
+addons/*/Scripts/WorkbenchGame/EnfusionMCP/

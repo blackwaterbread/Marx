@@ -1,0 +1,8 @@
+GameProject {
+ ID "Marx_Core"
+ GUID "6A885105A7EC72B9"
+ TITLE "Marx Core"
+ Dependencies {
+  "58D0FB3206B6F859"
+ }
+}
