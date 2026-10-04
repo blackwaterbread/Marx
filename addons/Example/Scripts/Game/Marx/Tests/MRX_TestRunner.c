@@ -93,6 +93,7 @@ class MRX_TestRunner : Managed
 		s_Instance = new MRX_TestRunner();
 		MRX_WalletMathTests.Register(s_Instance);
 		MRX_EconomyServiceTests.Register(s_Instance);
+		MRX_BootstrapTests.Register(s_Instance);
 		Print(TAG + string.Format("START tests=%1", s_Instance.m_aTests.Count()));
 		s_Instance.RunNext();
 	}
