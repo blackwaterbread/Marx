@@ -86,13 +86,17 @@ Using the "Stash" action opens the vanilla inventory with the player's stash as 
 1. The server spawns a personal container (`Prefabs/Marx/Stash/MRX_StashContainer.et`, no model) at the stash point and
    restores the player's `STASHED` assets into it. Their records stay `STASHED` while they lie in the container.
 2. The client opens the vanilla inventory and shows the container as a storage panel (`OpenStorageAsContainer`) with
-   the stash point as its preview. The container is never listed in the vicinity. Items are moved by drag and drop
-   as usual; the quick move from the character's inventory goes into the stash instead of onto the ground.
+   the stash point as its preview. The container is never listed in the vicinity, and the vicinity panel is hidden
+   while the stash is open. Items are moved by drag and drop as usual; the quick move from the character's inventory
+   goes into the stash instead of onto the ground.
 3. Every move is committed right away (one frame later, so intermediate moves do not count):
    - an item moved out of the container: `TakeWorldItem` (`DEPLOYED`, bound to the item)
    - an item moved in: `StoreWorldItem` (a bound asset of the player goes back to `STASHED`, any other item becomes a
      new asset)
    - changed contents of a stashed bag or weapon inside the container: its snapshot is updated
+   - an item of the player's assets that went into a bag in the container (a stashed one moved into it, or a deployed
+     one put into it): merged into the bag (`MergeIntoStashed`, one request: the bag's snapshot holds it, its own
+     asset is removed)
    - a refused move (stash full, validator, ...) is undone and shown as a hint
 4. Closing the inventory, walking away from the stash point, dying or leaving closes the stash: the container and the
    items still inside are removed (they stay `STASHED`).
@@ -101,10 +105,19 @@ Only the player who opened the container may take items out (`MRX_StashContainer
 by other characters cannot be put in (`MRX_StashStorageComponent.CanStoreItem`). The container
 holds up to 200000 cm3 and items up to 300 cm per side (`MaxCumulativeVolume`, `MaxItemSize` with
 `UseCapacityCoefficient` off, because the container has no model); the asset limit of the settings applies as well.
-The items may also fill at most 3 pages of the stash panel (6 x 8 cells each; `m_iMaxPages` on
-`MRX_StashStorageComponent`, 0 = no limit). Every item counts with its cell size, identical items too, although the
-panel shows identical items in one slot. Items already stashed are always shown, even beyond a lowered limit. The
-panel (`MRX_StashPanelUI`) shows all allowed pages from the start; items are laid out from the first page on.
+The items lie on a grid of at most 3 pages of 6 x 8 cells (`m_iMaxPages` on `MRX_StashStorageComponent`, 0 = no
+limit; `MRX_StashGrid`), each item on its own cells (1x1, 2x1, 2x2 or 3x3 as in the vanilla inventory; identical items
+are not stacked). The panel (`MRX_StashPanelUI`) shows all pages from the start and every item at its cell:
+
+- An item dropped on an empty cell goes there, whether it is moved inside the stash or put in from elsewhere. A drop
+  on cells that are taken is refused; a drop on a bag in the stash puts the item into the bag, as in vanilla.
+- The quick move puts an item at the first free cell of the shown page, or of another page. Other ways in (e.g. a
+  gamepad) take the first free cell.
+- The cell is stored with the asset (`MRX_AssetRecord.m_sPlacement`, "page,column,row") and used when the stash opens
+  again. Items without a stored cell, or whose cells are taken, go to the first free cells; items already stashed are
+  always shown, behind the page limit if needed.
+- The server keeps the grid; the client asks for cells (`SCR_PlayerController.MRX_RequestStashPlacement`) and shows
+  the grid the server sends.
 
 Server side, `MRX_StashSessions.Get()` returns the open containers (`MRX_StashSessionManager`).
 

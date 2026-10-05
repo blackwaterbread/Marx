@@ -11,6 +11,7 @@ class MRX_StashTests
 	static void Register(notnull MRX_TestRunner runner)
 	{
 		runner.Add(new MRX_Test_StashMath());
+		runner.Add(new MRX_Test_StashPlacement());
 		runner.Add(new MRX_Test_StashRoundTrip());
 		runner.Add(new MRX_Test_StashDepositRules());
 		runner.Add(new MRX_Test_StashWithdrawFailures());
@@ -281,6 +282,68 @@ class MRX_Test_StashMath : MRX_TestCase
 	{
 		if (actual != expected)
 			Check(false, string.Format("%1: expected %2, got %3", message, typename.EnumToString(MRX_EStashStatus, expected), typename.EnumToString(MRX_EStashStatus, actual)));
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Placement of stashed assets: kept while STASHED, set by stores and placement changes, cleared on deploy, saved.
+class MRX_Test_StashPlacement : MRX_TestCase
+{
+	//------------------------------------------------------------------------------------------------
+	override protected void Run()
+	{
+		MRX_StorageRules rules = MRX_TestUtils.CreateRules();
+		MRX_StashRecord record = MRX_StashRecord.Create("place-owner");
+
+		MRX_AssetRecord placed = MRX_AssetRecord.Create("p1", MRX_StashTests.PREFAB_RIFLE);
+		placed.m_sPlacement = "0,1,2";
+		MRX_AssetRecord deployed = MRX_AssetRecord.Create("p2", MRX_StashTests.PREFAB_MAP);
+		deployed.m_eState = MRX_EAssetState.DEPLOYED;
+		deployed.m_sPlacement = "0,0,0";
+		Apply(record, rules, "add", MRX_AssetChange.Add(placed), MRX_AssetChange.Add(deployed));
+		CheckString(record.FindAsset("p1").m_sPlacement, "0,1,2", "placement stored on add");
+		CheckString(record.FindAsset("p2").m_sPlacement, string.Empty, "deployed asset added without placement");
+
+		Apply(record, rules, "move", MRX_AssetChange.Update("p1", MRX_EAssetState.STASHED, MRX_EAssetState.STASHED).WithPlacement("1,0,0"));
+		CheckString(record.FindAsset("p1").m_sPlacement, "1,0,0", "placement changed");
+
+		Apply(record, rules, "snapshot", MRX_AssetChange.Update("p1", MRX_EAssetState.STASHED, MRX_EAssetState.STASHED, new MRX_ItemSnapshot()));
+		CheckString(record.FindAsset("p1").m_sPlacement, "1,0,0", "snapshot update keeps the placement");
+
+		Apply(record, rules, "deploy", MRX_AssetChange.Update("p1", MRX_EAssetState.STASHED, MRX_EAssetState.DEPLOYED, null, "session").WithPlacement("2,2,2"));
+		CheckString(record.FindAsset("p1").m_sPlacement, string.Empty, "deploy clears the placement");
+
+		Apply(record, rules, "store", MRX_AssetChange.Update("p1", MRX_EAssetState.DEPLOYED, MRX_EAssetState.STASHED).WithPlacement("2,3,4"));
+		CheckString(record.FindAsset("p1").m_sPlacement, "2,3,4", "store sets the placement");
+		CheckString(record.FindAsset("p1").Copy().m_sPlacement, "2,3,4", "copy keeps the placement");
+
+		// Saved like the Native backend saves assets (MRX_StashState).
+		JsonSaveContext save = new JsonSaveContext();
+		save.EnableTypeDiscriminator(false);
+		save.WriteValue("assets", record.m_aAssets);
+		JsonLoadContext load = new JsonLoadContext();
+		load.EnableTypeDiscriminator(false);
+		array<ref MRX_AssetRecord> loaded = {};
+		Check(load.LoadFromString(save.SaveToString()) && load.ReadValue("assets", loaded), "assets saved and loaded");
+		foreach (MRX_AssetRecord asset : loaded)
+		{
+			if (asset.m_sId == "p1")
+				CheckString(asset.m_sPlacement, "2,3,4", "placement saved");
+		}
+
+		Finish();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void Apply(MRX_StashRecord record, MRX_StorageRules rules, string key, MRX_AssetChange change, MRX_AssetChange secondChange = null)
+	{
+		MRX_StashRequest request = MRX_StashTests.CreateRequest(record.m_sOwnerId, key);
+		request.m_aChanges.Insert(change);
+		if (secondChange)
+			request.m_aChanges.Insert(secondChange);
+
+		MRX_StashResult result = MRX_StashMath.Apply(record, request, rules);
+		CheckInt(result.m_eStatus, MRX_EStashStatus.OK, key);
 	}
 }
 

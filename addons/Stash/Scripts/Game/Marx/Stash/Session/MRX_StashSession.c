@@ -18,6 +18,8 @@ class MRX_StashSession : Managed
 	protected ref map<string, IEntity> m_mShown = new map<string, IEntity>();
 	//! Asset ID -> JSON of the stored snapshot, to notice changed contents.
 	protected ref map<string, string> m_mStoredJson = new map<string, string>();
+	//! Asset ID -> stored placement (MRX_AssetRecord.m_sPlacement), to notice moves on the grid.
+	protected ref map<string, string> m_mStoredPlacement = new map<string, string>();
 	//! New items whose store request runs, so they are not stored twice.
 	protected ref array<IEntity> m_aStoring = {};
 	protected int m_iRestoring;
@@ -174,6 +176,7 @@ class MRX_StashSession : Managed
 				continue;
 
 			m_iRestoring++;
+			m_mStoredPlacement.Set(asset.m_sId, asset.m_sPlacement);
 			world.SpawnIntoStorage(m_ContainerManager, m_Storage, asset.m_sPrefab, asset.m_Snapshot, new MRX_StashSessionSpawn(this, asset.m_sId));
 		}
 
@@ -204,7 +207,10 @@ class MRX_StashSession : Managed
 	protected void OnRestored()
 	{
 		if (m_Storage)
+		{
+			PlaceRestoredItems();
 			m_Storage.SetRestoring(false);
+		}
 
 		if (m_bClosing)
 		{
@@ -214,6 +220,60 @@ class MRX_StashSession : Managed
 
 		m_bReady = true;
 		m_Manager.OnSessionReady(this);
+		// Stores placements that changed (taken cells, old records without one) and sends the grid to the client.
+		MarkDirty();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Restored items go to their stored placements; items without one, or whose cells are taken, to the first free
+	//! cells (behind the page limit if needed, so nothing stashed is hidden).
+	protected void PlaceRestoredItems()
+	{
+		MRX_StashGrid grid = m_Storage.GetGrid();
+		grid.Clear();
+		array<string> unplaced = {};
+		foreach (string assetId, IEntity item : m_mShown)
+		{
+			int width, height;
+			MRX_StashStorageComponent.GetItemCellSize(item, width, height);
+			MRX_StashPlacement stored = MRX_StashPlacement.Parse(m_mStoredPlacement.Get(assetId));
+			if (!stored || !grid.Place(MRX_StashStorageComponent.GetItemKey(item), stored, width, height, true))
+				unplaced.Insert(assetId);
+		}
+
+		foreach (string unplacedId : unplaced)
+		{
+			IEntity unplacedItem = m_mShown.Get(unplacedId);
+			string key = MRX_StashStorageComponent.GetItemKey(unplacedItem);
+			int itemWidth, itemHeight;
+			MRX_StashStorageComponent.GetItemCellSize(unplacedItem, itemWidth, itemHeight);
+			MRX_StashPlacement free = grid.FindFree(itemWidth, itemHeight, 0, key, true);
+			if (free)
+				grid.Place(key, free, itemWidth, itemHeight, true);
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! The user's client asks to put an item at a placement: an item in the container moves there if the cells are
+	//! free, an item about to be put in goes there when it arrives (the request and the move may come in any order).
+	void RequestPlacement(RplId itemId, notnull MRX_StashPlacement placement)
+	{
+		if (!m_bReady || m_bClosing || !m_Storage)
+			return;
+
+		string key = itemId.AsString();
+		IEntity item = SCR_EntityHelper.RplIdToEntity(itemId);
+		if (!item || !m_Storage.Contains(item))
+		{
+			m_Storage.SetPendingPlacement(key, placement);
+			return;
+		}
+
+		int width, height;
+		MRX_StashStorageComponent.GetItemCellSize(item, width, height);
+		m_Storage.GetGrid().Place(key, placement, width, height);
+		// Also when refused: sends the grid again, which puts the client's item back.
+		MarkDirty();
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -225,6 +285,7 @@ class MRX_StashSession : Managed
 
 		array<IEntity> inside = {};
 		GetRootItems(inside);
+		MergeNestedAssets(inside);
 
 		foreach (IEntity item : inside)
 		{
@@ -235,8 +296,15 @@ class MRX_StashSession : Managed
 					continue;
 
 				m_aStoring.Insert(item);
-				GetStash().StoreWorldItem(m_sOwnerId, item, new MRX_StashSessionStoreReply(this, item));
+				GetStash().StoreWorldItem(m_sOwnerId, item, new MRX_StashSessionStoreReply(this, item), GetPlacementText(item));
 				continue;
+			}
+
+			string placement = GetPlacementText(item);
+			if (placement != m_mStoredPlacement.Get(assetId))
+			{
+				m_mStoredPlacement.Set(assetId, placement);
+				GetStash().SetPlacement(m_sOwnerId, assetId, placement);
 			}
 
 			string json = ToJson(item);
@@ -259,11 +327,85 @@ class MRX_StashSession : Managed
 			IEntity left = m_mShown.Get(leftId);
 			m_mShown.Remove(leftId);
 			m_mStoredJson.Remove(leftId);
+			m_mStoredPlacement.Remove(leftId);
 			if (left && GetStash().GetWorld().IsAlive(left))
 				GetStash().TakeWorldItem(m_sOwnerId, leftId, left, new MRX_StashSessionTakeReply(this, leftId, left));
 			else
 				GetStash().RemoveVanished(m_sOwnerId, leftId);
 		}
+
+		if (m_bReady && !m_bClosing)
+			m_Manager.SendPlacements(this);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Items of the owner's assets that went into a stashed item in the container (e.g. into a bag) belong to that item
+	//! now: its snapshot holds them, so their own assets are merged into it (MergeIntoStashed) instead of counting as
+	//! taken out. Stashed items moved into a bag and deployed items put into one are both covered.
+	protected void MergeNestedAssets(notnull array<IEntity> rootItems)
+	{
+		array<IEntity> allItems = {};
+		m_ContainerManager.GetItems(allItems);
+		map<string, ref array<string>> merges = new map<string, ref array<string>>();
+		map<string, IEntity> targets = new map<string, IEntity>();
+		foreach (IEntity nested : allItems)
+		{
+			if (!nested || rootItems.Contains(nested))
+				continue;
+
+			IEntity top = nested;
+			while (top && top.GetParent() != m_Container)
+			{
+				top = top.GetParent();
+			}
+
+			if (!top)
+				continue;
+
+			// A bag not stored yet: merged once it is.
+			string targetId = FindShownAsset(top);
+			if (targetId.IsEmpty())
+				continue;
+
+			string mergedId = FindShownAsset(nested);
+			if (mergedId.IsEmpty() && GetStash().GetOwnerOf(nested) == m_sOwnerId)
+				mergedId = GetStash().GetAssetId(nested);
+
+			if (mergedId.IsEmpty())
+				continue;
+
+			if (!merges.Contains(targetId))
+			{
+				merges.Set(targetId, new array<string>());
+				targets.Set(targetId, top);
+			}
+
+			merges.Get(targetId).Insert(mergedId);
+		}
+
+		foreach (string targetAssetId, array<string> mergedIds : merges)
+		{
+			IEntity target = targets.Get(targetAssetId);
+			m_mStoredJson.Set(targetAssetId, ToJson(target));
+			GetStash().MergeIntoStashed(m_sOwnerId, targetAssetId, GetStash().GetWorld().Capture(target), mergedIds);
+			foreach (string mergedAssetId : mergedIds)
+			{
+				m_mShown.Remove(mergedAssetId);
+				m_mStoredJson.Remove(mergedAssetId);
+				m_mStoredPlacement.Remove(mergedAssetId);
+			}
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! \return The item's placement on the grid as stored in its record, or empty.
+	protected string GetPlacementText(IEntity item)
+	{
+		MRX_StashPlacement placement = m_Storage.GetGrid().Get(MRX_StashStorageComponent.GetItemKey(item));
+		if (!placement)
+			return string.Empty;
+
+		return placement.Format();
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -277,6 +419,8 @@ class MRX_StashSession : Managed
 			// Counted as shown even if it left again meanwhile; the next reconcile then takes it out.
 			m_mShown.Set(asset.m_sId, item);
 			m_mStoredJson.Set(asset.m_sId, ToJson(item));
+			// The next reconcile stores the placement again if the item moved on the grid meanwhile.
+			m_mStoredPlacement.Set(asset.m_sId, asset.m_sPlacement);
 			MarkDirty();
 			return;
 		}

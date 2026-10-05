@@ -102,6 +102,20 @@ modded class SCR_InventoryMenuUI
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! Dropped on an item slot: on an item in the stash only if that item is a storage (a bag takes it in, as in
+	//! vanilla). Stash cells are not swapped.
+	override void MoveItemToStorageSlot()
+	{
+		if (m_pFocusedSlotUI && MRX_StashPanelUI.Cast(m_pFocusedSlotUI.GetStorageUI()) && !m_pFocusedSlotUI.GetAsStorage())
+		{
+			SCR_UISoundEntity.SoundEvent(SCR_SoundEvent.SOUND_INV_DROP_ERROR);
+			return;
+		}
+
+		super.MoveItemToStorageSlot();
+	}
+
+	//------------------------------------------------------------------------------------------------
 	override protected void MoveBetweenToVicinity()
 	{
 		m_bMRX_QuickMove = true;
@@ -122,7 +136,28 @@ modded class SCR_InventoryMenuUI
 			return;
 		}
 
-		// Quick move while the stash is open: into the stash instead of onto the ground.
+		// Quick move while the stash is open: into the stash instead of onto the ground, at the first free cell of the
+		// shown page (or another page).
+		MRX_StashStorageComponent stash = MRX_StashStorageComponent.Cast(stashPanel.GetStorage());
+		MRX_StashPanelUI stashPanelUI = MRX_StashPanelUI.Cast(stashPanel);
+		int shownPage;
+		if (stashPanelUI)
+			shownPage = stashPanelUI.GetShownPage();
+
+		string key = MRX_StashStorageComponent.GetItemKey(pItem);
+		int width, height;
+		MRX_StashStorageComponent.GetItemCellSize(pItem, width, height);
+		MRX_StashPlacement placement = stash.GetGrid().FindFree(width, height, shownPage, key);
+		SCR_PlayerController controller = SCR_PlayerController.Cast(GetGame().GetPlayerController());
+		if (!placement || !controller)
+		{
+			SCR_UISoundEntity.SoundEvent(SCR_SoundEvent.SOUND_INV_DROP_ERROR);
+			return;
+		}
+
+		stash.SetPendingPlacement(key, placement);
+		controller.MRX_RequestStashPlacement(pItem, placement);
+
 		BaseInventoryStorageComponent storageFrom = m_pSelectedSlotUI.GetStorageUI().GetStorage();
 		m_pCallBack.m_pStorageFrom = GetStorageUIByBaseStorageComponent(storageFrom);
 		if (!m_pCallBack.m_pStorageFrom)

@@ -12,6 +12,9 @@ modded class SCR_PlayerController
 	protected bool m_bMRX_StashInventoryOpen;
 	//! Client: the stash point of the last open request. Weak.
 	protected IEntity m_MRX_StashPoint;
+	//! Client: the server's grid of the open stash (MRX_StashStorageComponent.GetPlacementsText), kept until the
+	//! container has replicated.
+	protected string m_sMRX_StashPlacements;
 
 	//------------------------------------------------------------------------------------------------
 	//! Client: asks the server to open the player's stash at the stash point.
@@ -35,6 +38,57 @@ modded class SCR_PlayerController
 	void MRX_SendStashContainerClose()
 	{
 		Rpc(MRX_RpcDo_StashContainerClose);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Server: sends the grid of the open stash to the owning client.
+	void MRX_SendStashPlacements(string placements)
+	{
+		Rpc(MRX_RpcDo_StashPlacements, placements);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Client: asks to put an item of the open stash, or one about to be put in, at a placement.
+	void MRX_RequestStashPlacement(notnull IEntity item, notnull MRX_StashPlacement placement)
+	{
+		Rpc(MRX_RpcAsk_StashPlace, SCR_EntityHelper.EntityToRplId(item), placement.m_iPage, placement.m_iColumn, placement.m_iRow);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	[RplRpc(RplChannel.Reliable, RplRcver.Server)]
+	protected void MRX_RpcAsk_StashPlace(RplId itemId, int page, int column, int row)
+	{
+		MRX_StashSessionManager sessions = MRX_StashSessions.Get();
+		MRX_StashSession session;
+		if (sessions)
+			session = sessions.Find(GetPlayerId());
+
+		// The grid checks the cells; out of range or taken cells are refused there.
+		if (session)
+			session.RequestPlacement(itemId, MRX_StashPlacement.Create(page, column, row));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	[RplRpc(RplChannel.Reliable, RplRcver.Owner)]
+	protected void MRX_RpcDo_StashPlacements(string placements)
+	{
+		m_sMRX_StashPlacements = placements;
+		MRX_ApplyStashPlacements();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Client: shows the server's grid. A hosting server's grid is the same object and already up to date.
+	protected void MRX_ApplyStashPlacements()
+	{
+		MRX_StashStorageComponent storage = MRX_GetStashStorage();
+		if (!storage)
+			return;
+
+		if (!Replication.IsServer())
+			storage.ApplyPlacementsText(m_sMRX_StashPlacements);
+
+		GetGame().GetCallqueue().Remove(MRX_RefreshStashPanel);
+		GetGame().GetCallqueue().CallLater(MRX_RefreshStashPanel);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -67,6 +121,7 @@ modded class SCR_PlayerController
 	protected void MRX_RpcDo_StashContainerOpen(RplId containerId)
 	{
 		m_MRX_StashContainerId = containerId;
+		m_sMRX_StashPlacements = string.Empty;
 		m_iMRX_StashContainerWaitMs = 0;
 		MRX_OpenStashContainer();
 	}
@@ -125,6 +180,9 @@ modded class SCR_PlayerController
 
 			return;
 		}
+
+		if (!Replication.IsServer() && !m_sMRX_StashPlacements.IsEmpty())
+			storage.ApplyPlacementsText(m_sMRX_StashPlacements);
 
 		menu.MRX_OpenStashPanel(storage);
 		m_bMRX_StashInventoryOpen = true;

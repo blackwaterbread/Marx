@@ -100,9 +100,18 @@ class MRX_StashService : Managed
 	//------------------------------------------------------------------------------------------------
 	//! Stores an item of the world: a deployed asset of the owner bound to it goes back to STASHED, an unbound item
 	//! becomes a new STASHED asset. The result carries the asset.
-	void StoreWorldItem(string ownerId, Managed item, MRX_StashResultCallback callback = null)
+	//! \param placement Front-end placement of the stored asset (MRX_AssetRecord.m_sPlacement).
+	void StoreWorldItem(string ownerId, Managed item, MRX_StashResultCallback callback = null, string placement = string.Empty)
 	{
-		Enqueue(ownerId, new MRX_StashStoreWorldOp(this, ownerId, item, callback));
+		Enqueue(ownerId, new MRX_StashStoreWorldOp(this, ownerId, item, callback, placement));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Sets the front-end placement of a STASHED asset (MRX_AssetRecord.m_sPlacement).
+	void SetPlacement(string ownerId, string assetId, string placement, MRX_StashResultCallback callback = null)
+	{
+		MRX_AssetChange change = MRX_AssetChange.Update(assetId, MRX_EAssetState.STASHED, MRX_EAssetState.STASHED).WithPlacement(placement);
+		Enqueue(ownerId, new MRX_StashChangeOp(this, ownerId, change, CreateServiceContext("place"), callback));
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -118,6 +127,15 @@ class MRX_StashService : Managed
 	{
 		MRX_AssetChange change = MRX_AssetChange.Update(assetId, MRX_EAssetState.STASHED, MRX_EAssetState.STASHED, snapshot);
 		Enqueue(ownerId, new MRX_StashChangeOp(this, ownerId, change, CreateServiceContext("update"), callback));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Items of other assets went into the item of a STASHED asset shown in the world (e.g. into a bag in an open stash
+	//! container): in one request the asset takes the snapshot that holds them and their assets are removed, so nothing
+	//! is kept twice. Merged assets may be STASHED (shown in the world) or DEPLOYED (bound to the item that went in).
+	void MergeIntoStashed(string ownerId, string assetId, notnull MRX_ItemSnapshot snapshot, notnull array<string> mergedAssetIds, MRX_StashResultCallback callback = null)
+	{
+		Enqueue(ownerId, new MRX_StashMergeOp(this, ownerId, assetId, snapshot, mergedAssetIds, CreateServiceContext("merge"), callback));
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -342,11 +360,7 @@ class MRX_StashService : Managed
 		{
 			foreach (MRX_AssetRecord asset : result.m_aAssets)
 			{
-				MRX_EAssetState oldState = asset.m_eState;
-				if (!op.CreatesAsset())
-					oldState = op.GetOldState();
-
-				m_OnAssetStateChanged.Invoke(asset, oldState);
+				m_OnAssetStateChanged.Invoke(asset, op.GetOldStateOf(asset));
 			}
 		}
 

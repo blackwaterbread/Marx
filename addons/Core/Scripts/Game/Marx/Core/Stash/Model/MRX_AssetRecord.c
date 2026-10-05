@@ -14,6 +14,9 @@ class MRX_AssetRecord : Managed
 	int m_iUpdatedAt;
 	//! Source of the request that created the asset, e.g. "marx_stash" or a consumer mod.
 	string m_sSource;
+	//! Where a stash front-end shows the asset while it is STASHED (e.g. a grid cell). Opaque to Marx Core; cleared
+	//! when the asset is deployed. Empty: no placement.
+	string m_sPlacement;
 
 	//------------------------------------------------------------------------------------------------
 	static MRX_AssetRecord Create(string id, ResourceName prefab, MRX_ItemSnapshot snapshot = null)
@@ -40,6 +43,7 @@ class MRX_AssetRecord : Managed
 		record.m_sDeploySession = m_sDeploySession;
 		record.m_iUpdatedAt = m_iUpdatedAt;
 		record.m_sSource = m_sSource;
+		record.m_sPlacement = m_sPlacement;
 		return record;
 	}
 }

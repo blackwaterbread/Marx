@@ -56,6 +56,16 @@ class MRX_StashOp : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! \return State of a changed asset before the op (ops that change several assets override this).
+	MRX_EAssetState GetOldStateOf(notnull MRX_AssetRecord asset)
+	{
+		if (m_bCreatesAsset)
+			return asset.m_eState;
+
+		return m_eOldState;
+	}
+
+	//------------------------------------------------------------------------------------------------
 	bool CreatesAsset()
 	{
 		return m_bCreatesAsset;
@@ -617,12 +627,14 @@ class MRX_StashStoreWorldOp : MRX_StashOp
 	protected Managed m_Item;
 	protected ref MRX_ItemSnapshot m_Snapshot;
 	protected MRX_AssetBinding m_Binding;
+	protected string m_sPlacement;
 
 	//------------------------------------------------------------------------------------------------
-	void MRX_StashStoreWorldOp(MRX_StashService service, string ownerId, Managed item, MRX_StashResultCallback callback)
+	void MRX_StashStoreWorldOp(MRX_StashService service, string ownerId, Managed item, MRX_StashResultCallback callback, string placement)
 	{
 		Init(service, ownerId, callback);
 		m_Item = item;
+		m_sPlacement = placement;
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -691,9 +703,15 @@ class MRX_StashStoreWorldOp : MRX_StashOp
 
 		MRX_StashRequest request = m_Service.CreateRequest(m_sOwnerId, null, "store");
 		if (m_Binding)
-			request.m_aChanges.Insert(MRX_AssetChange.Update(m_Binding.m_sAssetId, MRX_EAssetState.DEPLOYED, MRX_EAssetState.STASHED, m_Snapshot));
+		{
+			request.m_aChanges.Insert(MRX_AssetChange.Update(m_Binding.m_sAssetId, MRX_EAssetState.DEPLOYED, MRX_EAssetState.STASHED, m_Snapshot).WithPlacement(m_sPlacement));
+		}
 		else
-			request.m_aChanges.Insert(MRX_AssetChange.Add(MRX_AssetRecord.Create(MRX_StashService.CreateId(), m_Snapshot.m_sPrefab, m_Snapshot)));
+		{
+			MRX_AssetRecord asset = MRX_AssetRecord.Create(MRX_StashService.CreateId(), m_Snapshot.m_sPrefab, m_Snapshot);
+			asset.m_sPlacement = m_sPlacement;
+			request.m_aChanges.Insert(MRX_AssetChange.Add(asset));
+		}
 
 		ApplyRequest(request);
 	}
@@ -777,5 +795,91 @@ class MRX_StashTakeWorldOp : MRX_StashOp
 			m_Service.GetBindings().Bind(m_sAssetId, m_sOwnerId, m_Item);
 
 		Finish(result);
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! MergeIntoStashed: other assets' items are now inside the item of a STASHED asset. One request replaces its snapshot
+//! and removes the merged assets (in the state the stash has them in when the op runs); bound ones are unbound.
+class MRX_StashMergeOp : MRX_StashOp
+{
+	protected string m_sAssetId;
+	protected ref MRX_ItemSnapshot m_Snapshot;
+	protected ref array<string> m_aMergedIds = {};
+	protected ref MRX_TxContext m_Context;
+	protected ref map<string, MRX_EAssetState> m_mOldStates = new map<string, MRX_EAssetState>();
+
+	//------------------------------------------------------------------------------------------------
+	void MRX_StashMergeOp(MRX_StashService service, string ownerId, string assetId, notnull MRX_ItemSnapshot snapshot, notnull array<string> mergedAssetIds, MRX_TxContext context, MRX_StashResultCallback callback)
+	{
+		Init(service, ownerId, callback);
+		m_sAssetId = assetId;
+		m_Snapshot = snapshot.Copy();
+		m_aMergedIds.Copy(mergedAssetIds);
+		m_eOldState = MRX_EAssetState.STASHED;
+		if (context)
+			m_Context = context.Copy();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void Start()
+	{
+		if (!m_Context || !m_Context.IsValid())
+		{
+			Fail(MRX_EStashStatus.INVALID_CONTEXT);
+			return;
+		}
+
+		LoadStash();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void OnStashLoaded(MRX_EStashStatus status, MRX_StashRecord record)
+	{
+		if (status != MRX_EStashStatus.OK || !record)
+		{
+			Fail(MRX_EStashStatus.STORAGE_ERROR);
+			return;
+		}
+
+		MRX_StashRequest request = m_Service.CreateRequest(m_sOwnerId, m_Context, string.Empty);
+		request.m_aChanges.Insert(MRX_AssetChange.Update(m_sAssetId, MRX_EAssetState.STASHED, MRX_EAssetState.STASHED, m_Snapshot));
+		m_mOldStates.Set(m_sAssetId, MRX_EAssetState.STASHED);
+		foreach (string mergedId : m_aMergedIds)
+		{
+			// Already gone (e.g. removed meanwhile): nothing to merge.
+			MRX_AssetRecord merged = record.FindAsset(mergedId);
+			if (!merged || mergedId == m_sAssetId)
+				continue;
+
+			request.m_aChanges.Insert(MRX_AssetChange.Remove(mergedId, merged.m_eState));
+			m_mOldStates.Set(mergedId, merged.m_eState);
+		}
+
+		ApplyRequest(request);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void OnApplied(MRX_StashResult result)
+	{
+		if (result.m_eStatus == MRX_EStashStatus.OK)
+		{
+			foreach (string mergedId, MRX_EAssetState oldState : m_mOldStates)
+			{
+				if (oldState == MRX_EAssetState.DEPLOYED)
+					m_Service.GetBindings().Unbind(mergedId);
+			}
+		}
+
+		Finish(result);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override MRX_EAssetState GetOldStateOf(notnull MRX_AssetRecord asset)
+	{
+		if (m_mOldStates.Contains(asset.m_sId))
+			return m_mOldStates.Get(asset.m_sId);
+
+		return m_eOldState;
 	}
 }

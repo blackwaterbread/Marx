@@ -129,6 +129,7 @@ class MRX_TestRunner : Managed
 		MRX_ShopTests.Register(s_Instance);
 		MRX_ShopEntityTests.Register(s_Instance);
 		MRX_StashTests.Register(s_Instance);
+		MRX_StashGridTests.Register(s_Instance);
 		MRX_StashEntityTests.Register(s_Instance);
 		MRX_AdminCommandTests.Register(s_Instance);
 		MRX_StashContainerTests.Register(s_Instance);

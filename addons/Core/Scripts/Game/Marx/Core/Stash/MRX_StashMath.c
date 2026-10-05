@@ -78,6 +78,12 @@ class MRX_StashMath
 		else
 			asset.m_sDeploySession = string.Empty;
 
+		// A placement only means something inside the stash.
+		if (asset.m_eState != MRX_EAssetState.STASHED)
+			asset.m_sPlacement = string.Empty;
+		else if (change.m_bSetPlacement)
+			asset.m_sPlacement = change.m_sPlacement;
+
 		result.m_aAssets.Insert(asset.Copy());
 		if (MRX_AssetStates.IsFinal(asset.m_eState))
 			working.m_aAssets.RemoveItemOrdered(asset);
@@ -106,6 +112,9 @@ class MRX_StashMath
 
 		if (asset.m_eState != MRX_EAssetState.DEPLOYED)
 			asset.m_sDeploySession = string.Empty;
+
+		if (asset.m_eState != MRX_EAssetState.STASHED)
+			asset.m_sPlacement = string.Empty;
 
 		working.m_aAssets.Insert(asset);
 		result.m_aAssets.Insert(asset.Copy());

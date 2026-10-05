@@ -111,6 +111,17 @@ class MRX_StashSessionManager : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! Internal, called by MRX_StashSession: sends the container's grid to the player's client.
+	void SendPlacements(notnull MRX_StashSession session)
+	{
+		SCR_PlayerController controller = GetController(session.GetPlayerId());
+		if (!controller || !session.GetStorage())
+			return;
+
+		controller.MRX_SendStashPlacements(session.GetStorage().GetPlacementsText());
+	}
+
+	//------------------------------------------------------------------------------------------------
 	//! Internal: tells the player about a refused or failed move.
 	void ReportResult(notnull MRX_StashSession session, MRX_EStashStatus status)
 	{

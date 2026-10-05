@@ -23,6 +23,9 @@ class MRX_AssetChange : Managed
 	ref MRX_ItemSnapshot m_Snapshot;
 	//! UPDATE to DEPLOYED only.
 	string m_sDeploySession;
+	//! UPDATE to STASHED only: replaces the placement when m_bSetPlacement is set.
+	string m_sPlacement;
+	bool m_bSetPlacement;
 
 	//------------------------------------------------------------------------------------------------
 	static MRX_AssetChange Add(notnull MRX_AssetRecord asset)
@@ -45,6 +48,15 @@ class MRX_AssetChange : Managed
 		change.m_Snapshot = snapshot;
 		change.m_sDeploySession = deploySession;
 		return change;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! UPDATE: also sets the placement (see MRX_AssetRecord.m_sPlacement). \return This change.
+	MRX_AssetChange WithPlacement(string placement)
+	{
+		m_sPlacement = placement;
+		m_bSetPlacement = true;
+		return this;
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -72,6 +84,8 @@ class MRX_AssetChange : Managed
 			change.m_Snapshot = m_Snapshot.Copy();
 
 		change.m_sDeploySession = m_sDeploySession;
+		change.m_sPlacement = m_sPlacement;
+		change.m_bSetPlacement = m_bSetPlacement;
 		return change;
 	}
 }
