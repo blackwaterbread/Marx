@@ -134,6 +134,7 @@ modded class SCR_PlayerController
 		GetGame().GetCallqueue().Remove(MRX_ShowStashPanel);
 		MRX_StashStorageComponent storage = MRX_GetStashStorage();
 		m_MRX_StashContainerId = RplId.Invalid();
+		MRX_SetStashItemOfInterest(null);
 		if (!m_bMRX_StashInventoryOpen)
 			return;
 
@@ -160,6 +161,7 @@ modded class SCR_PlayerController
 		}
 
 		storage.SetPreviewEntity(m_MRX_StashPoint);
+		MRX_SetStashItemOfInterest(storage.GetOwner());
 		manager.m_OnInventoryOpenInvoker.Remove(MRX_OnInventoryOpenChanged);
 		manager.m_OnInventoryOpenInvoker.Insert(MRX_OnInventoryOpenChanged);
 		manager.OpenInventory();
@@ -247,12 +249,38 @@ modded class SCR_PlayerController
 		GetGame().GetCallqueue().Remove(MRX_WatchStashInventory);
 		GetGame().GetCallqueue().Remove(MRX_RefreshStashPanel);
 		MRX_StashStorageComponent.GetOnItemMoved().Remove(MRX_OnStashItemMoved);
+		MRX_SetStashItemOfInterest(null);
 		SCR_InventoryStorageManagerComponent manager = MRX_GetLocalInventoryManager();
 		if (manager)
 			manager.m_OnInventoryOpenInvoker.Remove(MRX_OnInventoryOpenChanged);
 
 		if (notifyServer)
 			Rpc(MRX_RpcAsk_StashClose);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Client: makes the container the vicinity's item of interest, as the vanilla loot action does with a body, so
+	//! that its items replicate to a remote client (the container stays out of the vicinity list).
+	//! \param container Null clears the item of interest if it is a stash container.
+	protected void MRX_SetStashItemOfInterest(IEntity container)
+	{
+		IEntity character = GetControlledEntity();
+		if (!character)
+			return;
+
+		CharacterVicinityComponent vicinity = CharacterVicinityComponent.Cast(character.FindComponent(CharacterVicinityComponent));
+		if (!vicinity)
+			return;
+
+		if (container)
+		{
+			vicinity.SetItemOfInterest(container);
+			return;
+		}
+
+		IEntity current = vicinity.GetItemOfInterest();
+		if (current && current.FindComponent(MRX_StashStorageComponent))
+			vicinity.SetItemOfInterest(null);
 	}
 
 	//------------------------------------------------------------------------------------------------

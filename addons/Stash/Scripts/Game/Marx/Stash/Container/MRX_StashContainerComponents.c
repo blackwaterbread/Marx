@@ -332,6 +332,10 @@ class MRX_StashContainerManagerComponent : ScriptedInventoryStorageManagerCompon
 	//------------------------------------------------------------------------------------------------
 	override protected bool ShouldForbidRemoveByInstigator(InventoryStorageManagerComponent instigatorManager, BaseInventoryStorageComponent fromStorage, IEntity item)
 	{
+		// Clients do not know the user; the server refuses (and undoes) moves of anyone else.
+		if (!Replication.IsServer())
+			return false;
+
 		// Without a user (closing) nobody may take items out.
 		return !m_User || !instigatorManager || instigatorManager.GetOwner() != m_User;
 	}
