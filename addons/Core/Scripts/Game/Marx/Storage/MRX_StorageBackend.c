@@ -16,7 +16,7 @@ class MRX_StorageBackend : Managed
 
 	//------------------------------------------------------------------------------------------------
 	//! Called once before any other method.
-	void Init(notnull MRX_WalletRules rules, notnull MRX_StatusCallback callback)
+	void Init(notnull MRX_StorageRules rules, notnull MRX_StatusCallback callback)
 	{
 		ReportNotImplemented("Init");
 		m_CallQueue.PostStatus(callback, MRX_ETxStatus.STORAGE_ERROR);
@@ -46,6 +46,22 @@ class MRX_StorageBackend : Managed
 	{
 		ReportNotImplemented("GetHistory");
 		m_CallQueue.PostHistory(callback, MRX_ETxStatus.STORAGE_ERROR, new array<ref MRX_LedgerEntry>());
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Resolves a detached copy of the owner's stash. An unknown owner resolves OK with an empty record.
+	void LoadStash(string ownerId, notnull MRX_StashCallback callback)
+	{
+		ReportNotImplemented("LoadStash");
+		MRX_StashDelivery.Post(m_CallQueue, callback, MRX_EStashStatus.STORAGE_ERROR, null);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Checks, applies and persists the request atomically (MRX_StashMath rules), including the idempotency check.
+	void ApplyStash(notnull MRX_StashRequest request, notnull MRX_StashResultCallback callback)
+	{
+		ReportNotImplemented("ApplyStash");
+		MRX_StashResultDelivery.Post(m_CallQueue, callback, MRX_StashResult.Create(MRX_EStashStatus.STORAGE_ERROR, request.m_sRequestId));
 	}
 
 	//------------------------------------------------------------------------------------------------

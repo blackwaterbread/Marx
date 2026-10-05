@@ -1,0 +1,32 @@
+GenericEntity : "{FD47FF9699A52E82}Prefabs/Props/Furniture/Wardrobe_01.et" {
+ ID "6093E737C84B2A8E"
+ components {
+  MRX_StashPointComponent "{6A892C8BB63C5F07}" {
+  }
+  ActionsManagerComponent "{6A892C8BB63CB72C}" {
+   ActionContexts {
+    UserActionContext "{6A892C8BB63CA0CD}" {
+     ContextName "MRX_Stash"
+     Position PointInfo "{6A892C8BB63C8B07}" {
+      Offset 0 1 0
+     }
+     Radius 2
+     Omnidirectional 1
+    }
+   }
+   additionalActions {
+    MRX_OpenStashAction "{6A892C8BB63CFFF3}" {
+     ParentContextList {
+      "MRX_Stash"
+     }
+     UIInfo UIInfo "{6A892C8BB63CD2C3}" {
+      Name "Stash"
+     }
+    }
+   }
+  }
+  RplComponent "{5624A88DC2D9928D}" {
+   Enabled 1
+  }
+ }
+}

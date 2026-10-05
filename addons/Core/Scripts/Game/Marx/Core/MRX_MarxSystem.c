@@ -5,9 +5,12 @@ class MRX_MarxSystem : GameSystem
 	[Attribute(params: "conf class=MRX_Settings", desc: "Marx settings. Empty uses built-in defaults (native storage with in-memory fallback, 'cash' currency).")]
 	protected ResourceName m_sSettingsConfig;
 
+	protected static const int BINDING_CHECK_MS = 2000;
+
 	protected ref MRX_Settings m_Settings;
 	protected ref MRX_EconomyService m_Economy;
 	protected ref MRX_IdentityService m_Identity;
+	protected ref MRX_StashService m_Stash;
 
 	//------------------------------------------------------------------------------------------------
 	override static void InitInfo(WorldSystemInfo outInfo)
@@ -40,6 +43,12 @@ class MRX_MarxSystem : GameSystem
 	}
 
 	//------------------------------------------------------------------------------------------------
+	MRX_StashService GetStash()
+	{
+		return m_Stash;
+	}
+
+	//------------------------------------------------------------------------------------------------
 	MRX_Settings GetSettings()
 	{
 		return m_Settings;
@@ -54,15 +63,23 @@ class MRX_MarxSystem : GameSystem
 
 		m_Settings = LoadSettings();
 		m_Economy = new MRX_EconomyService(CreateBackend(), m_Settings.CreateRules());
+		m_Economy.GetOnBalanceChanged().Insert(OnBalanceChanged);
 		m_Economy.Init();
 
 		m_Identity = new MRX_IdentityService();
 		m_Identity.GetOnOwnerReady().Insert(OnOwnerReady);
 		m_Identity.GetOnOwnerLeft().Insert(OnOwnerLeft);
 
+		m_Stash = new MRX_StashService(m_Economy, m_Identity, new MRX_EntityAssetWorld());
+		m_Stash.SetLossPolicy(m_Settings.GetLossPolicy());
+		GetGame().GetCallqueue().CallLater(CheckStashBindings, BINDING_CHECK_MS, true);
+
 		SCR_BaseGameMode gameMode = SCR_BaseGameMode.Cast(GetGame().GetGameMode());
 		if (gameMode)
+		{
 			m_Identity.Attach(gameMode);
+			gameMode.GetOnPlayerKilled().Insert(OnPlayerKilled);
+		}
 		else
 			Print("[MRX] No SCR_BaseGameMode in this world, player identities are not available", LogLevel.ERROR);
 	}
@@ -70,10 +87,16 @@ class MRX_MarxSystem : GameSystem
 	//------------------------------------------------------------------------------------------------
 	override event protected void OnCleanup()
 	{
+		GetGame().GetCallqueue().Remove(CheckStashBindings);
+
 		SCR_BaseGameMode gameMode = SCR_BaseGameMode.Cast(GetGame().GetGameMode());
 		if (gameMode && m_Identity)
 			m_Identity.Detach(gameMode);
 
+		if (gameMode)
+			gameMode.GetOnPlayerKilled().Remove(OnPlayerKilled);
+
+		m_Stash = null;
 		m_Identity = null;
 		m_Economy = null;
 		m_Settings = null;
@@ -114,11 +137,44 @@ class MRX_MarxSystem : GameSystem
 	protected void OnOwnerReady(int playerId, string ownerId)
 	{
 		m_Economy.WatchOwner(ownerId);
+		if (m_Stash)
+			m_Stash.RecoverOwner(ownerId);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnPlayerKilled(notnull SCR_InstigatorContextData instigatorContextData)
+	{
+		IEntity victim = instigatorContextData.GetVictimEntity();
+		if (m_Stash && victim)
+			m_Stash.OnCarrierKilled(victim);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void CheckStashBindings()
+	{
+		if (m_Stash)
+			m_Stash.CheckBindings();
 	}
 
 	//------------------------------------------------------------------------------------------------
 	protected void OnOwnerLeft(int playerId, string ownerId)
 	{
 		m_Economy.UnwatchOwner(ownerId);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Pushes changes of connected owners to their client (the first load of a watched owner counts as a change).
+	protected void OnBalanceChanged(string ownerId, string currency, int balance)
+	{
+		if (!m_Identity)
+			return;
+
+		int playerId = m_Identity.GetPlayerId(ownerId);
+		if (playerId == 0)
+			return;
+
+		SCR_PlayerController controller = SCR_PlayerController.Cast(GetGame().GetPlayerManager().GetPlayerController(playerId));
+		if (controller)
+			controller.MRX_SendBalance(currency, balance);
 	}
 }

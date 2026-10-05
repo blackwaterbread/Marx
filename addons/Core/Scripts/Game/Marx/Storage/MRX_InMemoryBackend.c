@@ -1,11 +1,12 @@
 //! Non-persistent backend. Used by tests and when no persistent storage is available.
 class MRX_InMemoryBackend : MRX_StorageBackend
 {
-	protected ref MRX_WalletRules m_Rules;
+	protected ref MRX_StorageRules m_Rules;
 	protected ref map<string, ref MRX_WalletRecord> m_mWallets = new map<string, ref MRX_WalletRecord>();
+	protected ref map<string, ref MRX_StashRecord> m_mStashes = new map<string, ref MRX_StashRecord>();
 
 	//------------------------------------------------------------------------------------------------
-	override void Init(notnull MRX_WalletRules rules, notnull MRX_StatusCallback callback)
+	override void Init(notnull MRX_StorageRules rules, notnull MRX_StatusCallback callback)
 	{
 		m_Rules = rules;
 		m_CallQueue.PostStatus(callback, MRX_ETxStatus.OK);
@@ -65,5 +66,33 @@ class MRX_InMemoryBackend : MRX_StorageBackend
 			MRX_WalletMath.CollectHistory(record, currency, limit, entries);
 
 		m_CallQueue.PostHistory(callback, MRX_ETxStatus.OK, entries);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void LoadStash(string ownerId, notnull MRX_StashCallback callback)
+	{
+		MRX_StashRecord record = m_mStashes.Get(ownerId);
+		if (record)
+			record = record.Copy();
+		else
+			record = MRX_StashRecord.Create(ownerId);
+
+		MRX_StashDelivery.Post(m_CallQueue, callback, MRX_EStashStatus.OK, record);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void ApplyStash(notnull MRX_StashRequest request, notnull MRX_StashResultCallback callback)
+	{
+		// The stash of a new owner is stored only when the request succeeds.
+		MRX_StashRecord record = m_mStashes.Get(request.m_sOwnerId);
+		bool isNew = !record;
+		if (isNew)
+			record = MRX_StashRecord.Create(request.m_sOwnerId);
+
+		MRX_StashResult result = MRX_StashMath.Apply(record, request, m_Rules);
+		if (isNew && result.m_eStatus == MRX_EStashStatus.OK)
+			m_mStashes.Insert(request.m_sOwnerId, record);
+
+		MRX_StashResultDelivery.Post(m_CallQueue, callback, result);
 	}
 }

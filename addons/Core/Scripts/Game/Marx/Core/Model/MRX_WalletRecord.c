@@ -22,9 +22,9 @@ class MRX_WalletRecord : Managed
 	string m_sOwnerId;
 	//! Currency ID -> balance. A currency without a key has never been touched.
 	ref map<string, int> m_mBalances = new map<string, int>();
-	//! Oldest first, trimmed to MRX_WalletRules.m_iMaxRecentEntries.
+	//! Oldest first, trimmed to MRX_StorageRules.m_iMaxRecentEntries.
 	ref array<ref MRX_LedgerEntry> m_aRecentEntries = {};
-	//! Oldest first, trimmed to MRX_WalletRules.m_iMaxRecentKeys.
+	//! Oldest first, trimmed to MRX_StorageRules.m_iMaxRecentKeys.
 	ref array<ref MRX_IdempotencyEntry> m_aRecentKeys = {};
 
 	//------------------------------------------------------------------------------------------------

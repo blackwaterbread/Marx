@@ -1,0 +1,10 @@
+GameProject {
+ ID "Marx_Stash"
+ GUID "6A8A0C37A19F762B"
+ TITLE "Marx Stash"
+ Dependencies {
+  "58D0FB3206B6F859"
+  "6A885105A7EC72B9"
+  "6A8A0C05BCEEF932"
+ }
+}

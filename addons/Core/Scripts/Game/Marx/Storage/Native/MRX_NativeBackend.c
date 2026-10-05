@@ -1,26 +1,31 @@
-//! Wallets as per-owner scripted states in the "MarxWallets" collection, committed with CommitStorage(GamemodeStorage)
-//! after every transaction. Needs a persistence config with that collection and MRX_WalletStateSerializer
-//! (Marx_Core ships reference configs). Without it, the backend falls back to in-memory storage.
+//! Wallets and stashes as per-owner scripted states in the "MarxWallets" and "MarxStashes" collections, committed with
+//! CommitStorage(GamemodeStorage) after every change. Needs a persistence config with those collections and the Marx
+//! state serializers (Marx_Core ships reference configs). Without them, the backend falls back to in-memory storage.
 class MRX_NativeBackend : MRX_StorageBackend
 {
 	//! Save data names allow only letters, digits, hyphen and dot (no underscore).
 	static const string COLLECTION_NAME = "MarxWallets";
 	static const string ID_PREFIX = "marx:wallet:";
+	static const string STASH_COLLECTION_NAME = "MarxStashes";
+	static const string STASH_ID_PREFIX = "marx:stash:";
 	protected static const int READY_POLL_MS = 250;
 	protected static const int READY_TIMEOUT_MS = 60000;
 	protected static const int COMMIT_TIMEOUT_MS = 10000;
 
-	protected ref MRX_WalletRules m_Rules;
+	protected ref MRX_StorageRules m_Rules;
 	protected ref MRX_StatusCallback m_InitCallback;
 	protected int m_iWaitedMs;
 	//! Set when the persistence config has no Marx wallet collection.
 	protected ref MRX_InMemoryBackend m_Fallback;
+	//! Set when the persistence config has the wallet collection but no stash collection.
+	protected ref MRX_InMemoryBackend m_StashFallback;
 
 	protected ref map<string, ref MRX_NativeWallet> m_mWallets = new map<string, ref MRX_NativeWallet>();
+	protected ref map<string, ref MRX_NativeStash> m_mStashes = new map<string, ref MRX_NativeStash>();
 	protected ref array<ref MRX_NativeOp> m_aOps = {};
 
-	protected ref array<ref MRX_NativeApplyOp> m_aCommitQueue = {};
-	protected ref array<ref MRX_NativeApplyOp> m_aCommitting = {};
+	protected ref array<ref MRX_NativeOp> m_aCommitQueue = {};
+	protected ref array<ref MRX_NativeOp> m_aCommitting = {};
 	protected ref PersistenceStatusCallback m_CommitCallback;
 	protected bool m_bCommitting;
 
@@ -36,7 +41,7 @@ class MRX_NativeBackend : MRX_StorageBackend
 	}
 
 	//------------------------------------------------------------------------------------------------
-	override void Init(notnull MRX_WalletRules rules, notnull MRX_StatusCallback callback)
+	override void Init(notnull MRX_StorageRules rules, notnull MRX_StatusCallback callback)
 	{
 		m_Rules = rules;
 		m_InitCallback = callback;
@@ -80,6 +85,32 @@ class MRX_NativeBackend : MRX_StorageBackend
 	}
 
 	//------------------------------------------------------------------------------------------------
+	override void LoadStash(string ownerId, notnull MRX_StashCallback callback)
+	{
+		MRX_InMemoryBackend fallback = GetStashFallback();
+		if (fallback)
+		{
+			fallback.LoadStash(ownerId, callback);
+			return;
+		}
+
+		StartOp(new MRX_NativeLoadStashOp(this, ownerId, callback));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void ApplyStash(notnull MRX_StashRequest request, notnull MRX_StashResultCallback callback)
+	{
+		MRX_InMemoryBackend fallback = GetStashFallback();
+		if (fallback)
+		{
+			fallback.ApplyStash(request, callback);
+			return;
+		}
+
+		StartOp(new MRX_NativeStashApplyOp(this, request, callback));
+	}
+
+	//------------------------------------------------------------------------------------------------
 	override int GetCapabilities()
 	{
 		if (m_Fallback)
@@ -99,7 +130,7 @@ class MRX_NativeBackend : MRX_StorageBackend
 
 	//------------------------------------------------------------------------------------------------
 	//! Internal, used by MRX_NativeOp.
-	MRX_WalletRules GetRules()
+	MRX_StorageRules GetRules()
 	{
 		return m_Rules;
 	}
@@ -161,13 +192,68 @@ class MRX_NativeBackend : MRX_StorageBackend
 		wallet.m_bLoading = true;
 		PersistenceLoadRequest request = new PersistenceLoadRequest();
 		request.Instances = {wallet.m_State};
-		wallet.m_LoadCallback = new PersistenceResultCallback(OnWalletStateLoaded, wallet);
+		// The callback keeps its context alive, so it only gets a weak link back to the wallet (no ref cycle).
+		wallet.m_LoadCallback = new PersistenceResultCallback(OnWalletStateLoaded, MRX_NativeWalletLink.Create(wallet));
 		persistence.RequestLoad(request, wallet.m_LoadCallback);
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Internal: commits the staged wallet states of the op, batched with other ops waiting for a commit.
-	void RequestCommit(notnull MRX_NativeApplyOp op)
+	//! Internal: the loaded stash of an owner, or null.
+	MRX_NativeStash GetLoadedStash(string ownerId)
+	{
+		MRX_NativeStash stash = m_mStashes.Get(ownerId);
+		if (!stash || !stash.m_bLoaded)
+			return null;
+
+		return stash;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Internal: loads the owner's stash once, then calls op.OnStashReady().
+	void LoadStashState(string ownerId, notnull MRX_NativeOp op)
+	{
+		MRX_NativeStash stash = m_mStashes.Get(ownerId);
+		if (stash && stash.m_bLoaded)
+		{
+			op.OnStashReady(MRX_EStashStatus.OK);
+			return;
+		}
+
+		if (!stash)
+		{
+			stash = new MRX_NativeStash();
+			stash.m_sOwnerId = ownerId;
+			stash.m_State = new MRX_StashState();
+			stash.m_State.m_Record = MRX_StashRecord.Create(ownerId);
+			m_mStashes.Insert(ownerId, stash);
+		}
+
+		stash.m_aWaiting.Insert(op);
+		if (stash.m_bLoading)
+			return;
+
+		PersistenceSystem persistence = PersistenceSystem.GetInstance();
+		if (!stash.m_bIdSet)
+		{
+			stash.m_bIdSet = persistence.SetId(stash.m_State, PersistenceIdUtils.FromString(STASH_ID_PREFIX + ownerId), true);
+			if (!stash.m_bIdSet)
+			{
+				Print(string.Format("[MRX] Could not assign the persistence ID of stash %1", ownerId), LogLevel.ERROR);
+				NotifyStashWaiting(stash, MRX_EStashStatus.STORAGE_ERROR);
+				return;
+			}
+		}
+
+		stash.m_bLoading = true;
+		PersistenceLoadRequest request = new PersistenceLoadRequest();
+		request.Instances = {stash.m_State};
+		stash.m_LoadCallback = new PersistenceResultCallback(OnStashStateLoaded, MRX_NativeStashLink.Create(stash));
+		persistence.RequestLoad(request, stash.m_LoadCallback);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Internal: commits the staged states of the op, batched with other ops waiting for a commit.
+	void RequestCommit(notnull MRX_NativeOp op)
 	{
 		m_aCommitQueue.Insert(op);
 		if (!m_bCommitting)
@@ -230,9 +316,9 @@ class MRX_NativeBackend : MRX_StorageBackend
 	protected void FinishCommit(bool success, bool timedOut)
 	{
 		m_bCommitting = false;
-		array<ref MRX_NativeApplyOp> committed = m_aCommitting;
+		array<ref MRX_NativeOp> committed = m_aCommitting;
 		m_aCommitting = {};
-		foreach (MRX_NativeApplyOp op : committed)
+		foreach (MRX_NativeOp op : committed)
 		{
 			op.OnCommitFinished(success, timedOut);
 		}
@@ -244,10 +330,11 @@ class MRX_NativeBackend : MRX_StorageBackend
 	//------------------------------------------------------------------------------------------------
 	protected void OnWalletStateLoaded(EPersistenceStatusCode statusCode, Managed result, bool isLast, Managed context)
 	{
-		MRX_NativeWallet wallet = MRX_NativeWallet.Cast(context);
-		if (!wallet)
+		MRX_NativeWalletLink link = MRX_NativeWalletLink.Cast(context);
+		if (!link || !link.m_Wallet)
 			return;
 
+		MRX_NativeWallet wallet = link.m_Wallet;
 		wallet.m_bLoading = false;
 
 		// NOT_FOUND = the owner has no saved wallet yet.
@@ -260,6 +347,48 @@ class MRX_NativeBackend : MRX_StorageBackend
 
 		Print(string.Format("[MRX] Could not load wallet %1: %2", wallet.m_sOwnerId, typename.EnumToString(EPersistenceStatusCode, statusCode)), LogLevel.ERROR);
 		NotifyWaiting(wallet, MRX_ETxStatus.STORAGE_ERROR);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnStashStateLoaded(EPersistenceStatusCode statusCode, Managed result, bool isLast, Managed context)
+	{
+		MRX_NativeStashLink link = MRX_NativeStashLink.Cast(context);
+		if (!link || !link.m_Stash)
+			return;
+
+		MRX_NativeStash stash = link.m_Stash;
+		stash.m_bLoading = false;
+
+		// NOT_FOUND = the owner has no saved stash yet.
+		if (statusCode == EPersistenceStatusCode.OK || statusCode == EPersistenceStatusCode.NOT_FOUND)
+		{
+			stash.m_bLoaded = true;
+			NotifyStashWaiting(stash, MRX_EStashStatus.OK);
+			return;
+		}
+
+		Print(string.Format("[MRX] Could not load stash %1: %2", stash.m_sOwnerId, typename.EnumToString(EPersistenceStatusCode, statusCode)), LogLevel.ERROR);
+		NotifyStashWaiting(stash, MRX_EStashStatus.STORAGE_ERROR);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void NotifyStashWaiting(notnull MRX_NativeStash stash, MRX_EStashStatus status)
+	{
+		array<ref MRX_NativeOp> waiting = stash.m_aWaiting;
+		stash.m_aWaiting = {};
+		foreach (MRX_NativeOp op : waiting)
+		{
+			op.OnStashReady(status);
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected MRX_InMemoryBackend GetStashFallback()
+	{
+		if (m_Fallback)
+			return m_Fallback;
+
+		return m_StashFallback;
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -293,6 +422,17 @@ class MRX_NativeBackend : MRX_StorageBackend
 			}
 
 			Print(string.Format("[MRX] Wallets are stored in the '%1' collection", COLLECTION_NAME), LogLevel.NORMAL);
+			if (persistence.FindCollection(STASH_COLLECTION_NAME))
+			{
+				Print(string.Format("[MRX] Stashes are stored in the '%1' collection", STASH_COLLECTION_NAME), LogLevel.NORMAL);
+			}
+			else
+			{
+				Print(string.Format("[MRX] The persistence config has no '%1' collection. Stashes are kept in memory only and are lost when the server stops.", STASH_COLLECTION_NAME), LogLevel.ERROR);
+				m_StashFallback = new MRX_InMemoryBackend();
+				m_StashFallback.Init(m_Rules, new MRX_StatusCallback());
+			}
+
 			m_CallQueue.PostStatus(m_InitCallback, MRX_ETxStatus.OK);
 			return;
 		}
@@ -311,7 +451,7 @@ class MRX_NativeBackend : MRX_StorageBackend
 	//------------------------------------------------------------------------------------------------
 	protected void UseFallback(string reason)
 	{
-		Print(string.Format("[MRX] NATIVE storage unavailable (%1). Wallets are kept in memory only and are lost when the server stops. Select a systems config that uses the Marx persistence config.", reason), LogLevel.ERROR);
+		Print(string.Format("[MRX] NATIVE storage unavailable (%1). Wallets and stashes are kept in memory only and are lost when the server stops. Select a systems config that uses the Marx persistence config.", reason), LogLevel.ERROR);
 		m_Fallback = new MRX_InMemoryBackend();
 		m_Fallback.Init(m_Rules, m_InitCallback);
 	}
@@ -328,6 +468,21 @@ class MRX_NativeWallet : Managed
 	bool m_bLoading;
 	bool m_bLoaded;
 	ref array<ref MRX_NativeOp> m_aWaiting = {};
+}
+
+//------------------------------------------------------------------------------------------------
+//! Weak reference to a wallet, passed as persistence callback context. Internal.
+class MRX_NativeWalletLink : Managed
+{
+	MRX_NativeWallet m_Wallet;
+
+	//------------------------------------------------------------------------------------------------
+	static MRX_NativeWalletLink Create(MRX_NativeWallet wallet)
+	{
+		MRX_NativeWalletLink link = new MRX_NativeWalletLink();
+		link.m_Wallet = wallet;
+		return link;
+	}
 }
 
 //------------------------------------------------------------------------------------------------
@@ -362,6 +517,18 @@ class MRX_NativeOp : Managed
 		}
 
 		LoadNextOwner();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Stash ops: the owner's stash is loaded (or failed to load).
+	void OnStashReady(MRX_EStashStatus status)
+	{
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Ops that requested a commit: the commit that contains them finished.
+	void OnCommitFinished(bool success, bool timedOut)
+	{
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -509,8 +676,7 @@ class MRX_NativeApplyOp : MRX_NativeOp
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Internal, called by the backend when the commit that contains this op finished.
-	void OnCommitFinished(bool success, bool timedOut)
+	override void OnCommitFinished(bool success, bool timedOut)
 	{
 		if (!success)
 		{
@@ -546,6 +712,150 @@ class MRX_NativeApplyOp : MRX_NativeOp
 	protected void Finish()
 	{
 		m_Backend.GetCallQueue().PostTx(m_Callback, m_Result);
+		m_bDone = true;
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Loaded (or loading) stash of one owner. Kept for the session.
+class MRX_NativeStash : Managed
+{
+	string m_sOwnerId;
+	ref MRX_StashState m_State;
+	ref PersistenceResultCallback m_LoadCallback;
+	bool m_bIdSet;
+	bool m_bLoading;
+	bool m_bLoaded;
+	ref array<ref MRX_NativeOp> m_aWaiting = {};
+}
+
+//------------------------------------------------------------------------------------------------
+//! Weak reference to a stash, passed as persistence callback context. Internal.
+class MRX_NativeStashLink : Managed
+{
+	MRX_NativeStash m_Stash;
+
+	//------------------------------------------------------------------------------------------------
+	static MRX_NativeStashLink Create(MRX_NativeStash stash)
+	{
+		MRX_NativeStashLink link = new MRX_NativeStashLink();
+		link.m_Stash = stash;
+		return link;
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+class MRX_NativeLoadStashOp : MRX_NativeOp
+{
+	protected string m_sOwnerId;
+	protected ref MRX_StashCallback m_Callback;
+
+	//------------------------------------------------------------------------------------------------
+	void MRX_NativeLoadStashOp(MRX_NativeBackend backend, string ownerId, MRX_StashCallback callback)
+	{
+		m_Backend = backend;
+		m_sOwnerId = ownerId;
+		m_Callback = callback;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void Start()
+	{
+		m_Backend.LoadStashState(m_sOwnerId, this);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void OnStashReady(MRX_EStashStatus status)
+	{
+		MRX_StashRecord record;
+		if (status == MRX_EStashStatus.OK)
+			record = m_Backend.GetLoadedStash(m_sOwnerId).m_State.m_Record.Copy();
+
+		MRX_StashDelivery.Post(m_Backend.GetCallQueue(), m_Callback, status, record);
+		m_bDone = true;
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Applies a stash request to the loaded stash, saves it and waits for the storage commit.
+//! Same failure rules as MRX_NativeApplyOp: a failed commit restores the stash, a timed-out one does not.
+class MRX_NativeStashApplyOp : MRX_NativeOp
+{
+	protected ref MRX_StashRequest m_Request;
+	protected ref MRX_StashResultCallback m_Callback;
+	protected ref MRX_StashResult m_Result;
+	protected ref MRX_StashRecord m_Snapshot;
+
+	//------------------------------------------------------------------------------------------------
+	void MRX_NativeStashApplyOp(MRX_NativeBackend backend, MRX_StashRequest request, MRX_StashResultCallback callback)
+	{
+		m_Backend = backend;
+		m_Request = request;
+		m_Callback = callback;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void Start()
+	{
+		m_Backend.LoadStashState(m_Request.m_sOwnerId, this);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void OnStashReady(MRX_EStashStatus status)
+	{
+		if (status != MRX_EStashStatus.OK)
+		{
+			FinishStash(MRX_StashResult.Create(status, m_Request.m_sRequestId));
+			return;
+		}
+
+		MRX_NativeStash stash = m_Backend.GetLoadedStash(m_Request.m_sOwnerId);
+		m_Snapshot = stash.m_State.m_Record.Copy();
+		m_Result = MRX_StashMath.Apply(stash.m_State.m_Record, m_Request, m_Backend.GetRules());
+		if (m_Result.m_eStatus != MRX_EStashStatus.OK)
+		{
+			FinishStash(m_Result);
+			return;
+		}
+
+		if (!PersistenceSystem.GetInstance().Save(stash.m_State))
+		{
+			Print(string.Format("[MRX] Could not save stash %1", m_Request.m_sOwnerId), LogLevel.ERROR);
+			RestoreSnapshot();
+			FinishStash(MRX_StashResult.Create(MRX_EStashStatus.STORAGE_ERROR, m_Request.m_sRequestId));
+			return;
+		}
+
+		m_Backend.RequestCommit(this);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void OnCommitFinished(bool success, bool timedOut)
+	{
+		if (success)
+		{
+			FinishStash(m_Result);
+			return;
+		}
+
+		if (!timedOut)
+			RestoreSnapshot();
+
+		FinishStash(MRX_StashResult.Create(MRX_EStashStatus.STORAGE_ERROR, m_Request.m_sRequestId));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void RestoreSnapshot()
+	{
+		MRX_NativeStash stash = m_Backend.GetLoadedStash(m_Request.m_sOwnerId);
+		stash.m_State.m_Record = m_Snapshot;
+		PersistenceSystem.GetInstance().Save(stash.m_State);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void FinishStash(notnull MRX_StashResult result)
+	{
+		MRX_StashResultDelivery.Post(m_Backend.GetCallQueue(), m_Callback, result);
 		m_bDone = true;
 	}
 }

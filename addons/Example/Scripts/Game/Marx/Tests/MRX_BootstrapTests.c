@@ -142,7 +142,7 @@ class MRX_Test_SettingsRules : MRX_TestCase
 	override protected void Run()
 	{
 		MRX_Settings defaultSettings = MRX_Settings.CreateDefault();
-		MRX_WalletRules defaults = defaultSettings.CreateRules();
+		MRX_StorageRules defaults = defaultSettings.CreateRules();
 		Check(defaults.m_Currencies.Find(MRX_Settings.DEFAULT_CURRENCY) != null, "default currency");
 		CheckInt(defaults.m_iMaxRecentEntries, 50, "default entries");
 		CheckInt(defaults.m_iMaxRecentKeys, 200, "default keys");
@@ -152,7 +152,7 @@ class MRX_Test_SettingsRules : MRX_TestCase
 		custom.m_aCurrencies.Insert(MRX_CurrencyDef.Create("gold", 10, 100));
 		custom.m_aCurrencies.Insert(MRX_CurrencyDef.Create("gold", 0, 5));
 		custom.m_aCurrencies.Insert(MRX_CurrencyDef.Create("bad", 500, 100));
-		MRX_WalletRules customRules = custom.CreateRules();
+		MRX_StorageRules customRules = custom.CreateRules();
 
 		array<string> ids = {};
 		CheckInt(customRules.m_Currencies.GetIds(ids), 1, "valid currencies");

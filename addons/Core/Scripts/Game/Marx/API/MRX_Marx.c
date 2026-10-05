@@ -25,6 +25,17 @@ class MRX_Marx
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! Owned assets. Calls made before storage is ready wait for it.
+	static MRX_StashService GetStash()
+	{
+		MRX_MarxSystem system = MRX_MarxSystem.GetInstance();
+		if (!system)
+			return null;
+
+		return system.GetStash();
+	}
+
+	//------------------------------------------------------------------------------------------------
 	static MRX_IdentityService GetIdentity()
 	{
 		MRX_MarxSystem system = MRX_MarxSystem.GetInstance();
@@ -32,6 +43,17 @@ class MRX_Marx
 			return null;
 
 		return system.GetIdentity();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! \return A new unique ID, e.g. for idempotency keys of one-off events.
+	static string NewId()
+	{
+		UUID id = PersistenceIdUtils.Generate();
+		if (id.IsNull())
+			id = UUID.GenV4();
+
+		return id;
 	}
 
 	//------------------------------------------------------------------------------------------------

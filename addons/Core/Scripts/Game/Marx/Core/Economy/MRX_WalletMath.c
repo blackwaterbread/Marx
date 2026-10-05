@@ -43,7 +43,7 @@ class MRX_WalletMath
 	//! Applies all postings or none. Committed keys are checked first, so a retry returns DUPLICATE.
 	//! Failed requests do not consume their idempotency key.
 	//! \param records Wallet record of every posting owner, keyed by owner ID. Modified only on OK.
-	static MRX_TxResult Apply(notnull map<string, MRX_WalletRecord> records, notnull MRX_TxRequest request, notnull MRX_WalletRules rules)
+	static MRX_TxResult Apply(notnull map<string, MRX_WalletRecord> records, notnull MRX_TxRequest request, notnull MRX_StorageRules rules)
 	{
 		MRX_TxContext context = request.m_Context;
 		if (!context || !context.IsValid())

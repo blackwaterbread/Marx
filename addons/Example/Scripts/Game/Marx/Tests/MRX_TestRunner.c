@@ -30,6 +30,13 @@ class MRX_TestCase : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! Override for tests that wait for players or the network.
+	int GetTimeoutMs()
+	{
+		return MRX_TestRunner.TIMEOUT_MS;
+	}
+
+	//------------------------------------------------------------------------------------------------
 	//! Empty unless the test was skipped.
 	string GetSkipReason()
 	{
@@ -95,6 +102,10 @@ class MRX_TestRunner : Managed
 	static const string TAG = "[MRX_TEST] ";
 	static const int TIMEOUT_MS = 5000;
 	static const string AUTO_CLOSE_PARAM = "mrxTestsAutoClose";
+	//! Players without a backend identity get a name-based test owner ID (see MRX_TestIdentity.c).
+	static const string TEST_IDENTITY_PARAM = "mrxTestIdentity";
+	//! Waits for a PeerTool client in MRX_Test_PeerSync instead of skipping it.
+	static const string PEER_TEST_PARAM = "mrxTestsPeer";
 	static const int AUTO_CLOSE_DELAY_MS = 2000;
 
 	protected static ref MRX_TestRunner s_Instance;
@@ -113,6 +124,11 @@ class MRX_TestRunner : Managed
 		MRX_EconomyServiceTests.Register(s_Instance);
 		MRX_BootstrapTests.Register(s_Instance);
 		MRX_NativeTests.Register(s_Instance);
+		MRX_ShopTests.Register(s_Instance);
+		MRX_ShopEntityTests.Register(s_Instance);
+		MRX_StashTests.Register(s_Instance);
+		MRX_StashEntityTests.Register(s_Instance);
+		MRX_NetworkTests.Register(s_Instance);
 		Print(TAG + string.Format("START tests=%1", s_Instance.m_aTests.Count()));
 		s_Instance.RunNext();
 	}
@@ -141,6 +157,7 @@ class MRX_TestRunner : Managed
 		if (m_iCurrent >= m_aTests.Count())
 		{
 			Print(TAG + string.Format("DONE passed=%1 failed=%2 skipped=%3", m_iPassed, m_iFailed, m_iSkipped));
+			GetGame().GetCallqueue().CallLater(Release);
 
 			// For automated runs: Workbench started with -mrxTestsAutoClose returns to edit mode.
 			if (System.IsCLIParam(AUTO_CLOSE_PARAM))
@@ -149,8 +166,15 @@ class MRX_TestRunner : Managed
 			return;
 		}
 
-		GetGame().GetCallqueue().CallLater(CheckTimeout, TIMEOUT_MS, false, m_iCurrent);
+		GetGame().GetCallqueue().CallLater(CheckTimeout, m_aTests[m_iCurrent].GetTimeoutMs(), false, m_iCurrent);
 		m_aTests[m_iCurrent].Start(this);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Drops the finished run, so its services do not outlive the game (they show up as leaks on script reload).
+	protected static void Release()
+	{
+		s_Instance = null;
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -196,7 +220,7 @@ class MRX_TestRunner : Managed
 		}
 
 		if (timedOut)
-			Print(TAG + string.Format("  timed out after %1 ms", TIMEOUT_MS), LogLevel.ERROR);
+			Print(TAG + string.Format("  timed out after %1 ms", test.GetTimeoutMs()), LogLevel.ERROR);
 	}
 }
 
@@ -205,13 +229,13 @@ class MRX_TestUtils
 {
 	//------------------------------------------------------------------------------------------------
 	//! Currencies: "cash" (initial 100, max 1000000), "debt" (initial 0, -1000..1000), "big" (initial 100, max int.MAX).
-	static MRX_WalletRules CreateRules(int maxRecentEntries = 50, int maxRecentKeys = 200)
+	static MRX_StorageRules CreateRules(int maxRecentEntries = 50, int maxRecentKeys = 200)
 	{
 		MRX_CurrencyRegistry currencies = new MRX_CurrencyRegistry();
 		currencies.Register(MRX_CurrencyDef.Create("cash", 100, 1000000));
 		currencies.Register(MRX_CurrencyDef.Create("debt", 0, 1000, true));
 		currencies.Register(MRX_CurrencyDef.Create("big", 100));
-		return MRX_WalletRules.Create(currencies, maxRecentEntries, maxRecentKeys);
+		return MRX_StorageRules.Create(currencies, maxRecentEntries, maxRecentKeys);
 	}
 
 	//------------------------------------------------------------------------------------------------

@@ -20,7 +20,7 @@ class MRX_BalanceCache : Managed
 class MRX_EconomyService : Managed
 {
 	protected ref MRX_StorageBackend m_Backend;
-	protected ref MRX_WalletRules m_Rules;
+	protected ref MRX_StorageRules m_Rules;
 	protected MRX_EEconomyServiceState m_eState;
 	protected ref MRX_StatusCallback m_InitCallback;
 	protected ref MRX_CallQueue m_CallQueue = new MRX_CallQueue();
@@ -38,7 +38,7 @@ class MRX_EconomyService : Managed
 	protected ref ScriptInvokerBase<MRX_BalanceChangedDelegate> m_OnBalanceChanged;
 
 	//------------------------------------------------------------------------------------------------
-	void MRX_EconomyService(notnull MRX_StorageBackend backend, notnull MRX_WalletRules rules)
+	void MRX_EconomyService(notnull MRX_StorageBackend backend, notnull MRX_StorageRules rules)
 	{
 		m_Backend = backend;
 		m_Rules = rules;
@@ -68,7 +68,7 @@ class MRX_EconomyService : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
-	MRX_WalletRules GetRules()
+	MRX_StorageRules GetRules()
 	{
 		return m_Rules;
 	}
@@ -114,7 +114,7 @@ class MRX_EconomyService : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Recent ledger entries, newest first. Local backends only keep the last MRX_WalletRules.m_iMaxRecentEntries.
+	//! Recent ledger entries, newest first. Local backends only keep the last MRX_StorageRules.m_iMaxRecentEntries.
 	//! \param currency Empty for all currencies.
 	//! \param limit 0 or less for all available entries.
 	void GetHistory(string ownerId, string currency, int limit, MRX_HistoryCallback callback)

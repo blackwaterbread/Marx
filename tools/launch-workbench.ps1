@@ -13,6 +13,13 @@ Addon folder under addons/ to open. Default: Example.
 .PARAMETER AutoCloseTests
 Passes -mrxTestsAutoClose: the Workbench-only Marx test harness leaves Play mode after its run.
 
+.PARAMETER TestIdentity
+Passes -mrxTestIdentity: players without a backend identity get a name-based test owner ID in the
+Workbench-only test harness, so economy tests also run while the Bohemia backend is unreachable.
+
+.PARAMETER PeerTest
+Passes -mrxTestsPeer: the test harness waits for a PeerTool client and checks the balance push to it.
+
 .PARAMETER NoScriptAuthorizeAll
 Do not pass -scriptAuthorizeAll (which suppresses the "Script Authorization Required" prompt).
 
@@ -36,6 +43,8 @@ powershell -ExecutionPolicy Bypass -File tools/launch-workbench.ps1 -AutoCloseTe
 param(
 	[string]$Project = "Example",
 	[switch]$AutoCloseTests,
+	[switch]$TestIdentity,
+	[switch]$PeerTest,
 	[switch]$NoScriptAuthorizeAll,
 	[string]$WorkbenchExe,
 	[string]$GameDir,
@@ -132,6 +141,16 @@ if ($AutoCloseTests)
 	$arguments += "-mrxTestsAutoClose"
 }
 
+if ($TestIdentity)
+{
+	$arguments += "-mrxTestIdentity"
+}
+
+if ($PeerTest)
+{
+	$arguments += "-mrxTestsPeer"
+}
+
 Write-Host "Workbench: $WorkbenchExe"
 Write-Host "Working directory: $GameDir"
 Write-Host "Logs: $LogsDir"
@@ -141,9 +160,11 @@ if ($DryRun)
 	return
 }
 
-if (Get-Process -Name "ArmaReforgerWorkbenchSteamDiag" -ErrorAction SilentlyContinue)
+# Other projects may have their own Workbench open; only refuse when this project is already open.
+$running = Get-CimInstance Win32_Process -Filter "Name = 'ArmaReforgerWorkbenchSteamDiag.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($gproj) }
+if ($running)
 {
-	throw "Workbench is already running. Close it first."
+	throw "Workbench is already running with $gproj (process $($running.ProcessId -join ', ')). Close it first."
 }
 
 New-Item -ItemType Directory -Force -Path $LogsDir | Out-Null

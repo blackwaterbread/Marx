@@ -27,8 +27,88 @@ class MRX_ReferenceConfigsPlugin : WorldEditorPlugin
 		if (persistence.IsEmpty())
 			return;
 
+		AddStashCollection(PERSISTENCE_FILE);
 		CreateSystemsConfig(persistence);
 		Print(TAG + "done");
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Adds the stash collection and its state config next to the wallet ones, keeping the existing IDs.
+	//! A text edit, because the container API would also write the inherited vanilla entries into the file.
+	protected void AddStashCollection(string file)
+	{
+		string absPath;
+		Workbench.GetAbsolutePath(file, absPath, true);
+		FileHandle reader = FileIO.OpenFile(absPath, FileMode.READ);
+		if (!reader)
+		{
+			Print(TAG + "cannot read " + absPath, LogLevel.ERROR);
+			return;
+		}
+
+		array<string> lines = {};
+		string line;
+		while (reader.ReadLine(line) >= 0)
+		{
+			lines.Insert(line);
+		}
+
+		reader.Close();
+
+		int walletName = -1;
+		int walletSerializer = -1;
+		foreach (int i, string text : lines)
+		{
+			if (text.Contains("\"" + MRX_NativeBackend.STASH_COLLECTION_NAME + "\""))
+			{
+				Print(TAG + "stash collection already present");
+				return;
+			}
+
+			if (text.Contains("Name \"" + MRX_NativeBackend.COLLECTION_NAME + "\""))
+				walletName = i;
+
+			if (text.Contains("Serializer MRX_WalletStateSerializer"))
+				walletSerializer = i;
+		}
+
+		// Expected layout: Name, Storage, "  }" / Serializer, "       }", "      }".
+		if (walletName < 0 || walletSerializer < 0 || walletSerializer + 2 >= lines.Count() || !lines[walletName + 1].Contains("Storage "))
+		{
+			Print(TAG + "unexpected persistence config layout, stash collection not added", LogLevel.ERROR);
+			return;
+		}
+
+		string storageLine = lines[walletName + 1];
+		string storageId = storageLine.Substring(storageLine.IndexOf("\"") + 1, 18);
+		string collectionId = NewId();
+
+		// Insert the later block first so the earlier index stays valid.
+		lines.InsertAt("      }", walletSerializer + 3);
+		lines.InsertAt("       }", walletSerializer + 3);
+		lines.InsertAt("       Serializer MRX_StashStateSerializer \"" + NewId() + "\" {", walletSerializer + 3);
+		lines.InsertAt("       Collection \"" + collectionId + "\"", walletSerializer + 3);
+		lines.InsertAt("      StatePersistenceConfig \"" + NewId() + "\" {", walletSerializer + 3);
+
+		lines.InsertAt("  }", walletName + 3);
+		lines.InsertAt("   Storage \"" + storageId + "\"", walletName + 3);
+		lines.InsertAt("   Name \"" + MRX_NativeBackend.STASH_COLLECTION_NAME + "\"", walletName + 3);
+		lines.InsertAt("  PersistenceCollection \"" + collectionId + "\" {", walletName + 3);
+
+		FileHandle writer = FileIO.OpenFile(absPath, FileMode.WRITE);
+		if (!writer)
+		{
+			Print(TAG + "cannot write " + absPath, LogLevel.ERROR);
+			return;
+		}
+
+		foreach (string outLine : lines)
+		{
+			writer.WriteLine(outLine);
+		}
+
+		writer.Close();
+		Print(TAG + "stash collection added to " + absPath);
 	}
 
 	//------------------------------------------------------------------------------------------------

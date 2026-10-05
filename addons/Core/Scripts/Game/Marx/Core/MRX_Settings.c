@@ -19,6 +19,12 @@ class MRX_Settings
 	[Attribute("200", desc: "Idempotency keys kept per wallet by local backends. Older keys are no longer detected as duplicates.")]
 	int m_iMaxRecentKeys;
 
+	[Attribute("100", desc: "Assets (stashed and deployed) per stash. 0 = no limit.")]
+	int m_iMaxStashAssets;
+
+	[Attribute(desc: "What happens to deployed assets on death and after a restart. Empty = keep on death, restore after a restart.")]
+	ref MRX_LossPolicy m_LossPolicy;
+
 	[Attribute(desc: "Currencies. Empty = a single 'cash' currency.")]
 	ref array<ref MRX_CurrencyDef> m_aCurrencies;
 
@@ -30,11 +36,21 @@ class MRX_Settings
 		settings.m_eBackend = MRX_EBackendType.NATIVE;
 		settings.m_iMaxRecentEntries = 50;
 		settings.m_iMaxRecentKeys = 200;
+		settings.m_iMaxStashAssets = 100;
 		return settings;
 	}
 
 	//------------------------------------------------------------------------------------------------
-	MRX_WalletRules CreateRules()
+	MRX_LossPolicy GetLossPolicy()
+	{
+		if (m_LossPolicy)
+			return m_LossPolicy;
+
+		return MRX_LossPolicy.Create();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	MRX_StorageRules CreateRules()
 	{
 		MRX_CurrencyRegistry currencies = new MRX_CurrencyRegistry();
 		bool configured;
@@ -58,6 +74,6 @@ class MRX_Settings
 			currencies.Register(MRX_CurrencyDef.Create(DEFAULT_CURRENCY));
 		}
 
-		return MRX_WalletRules.Create(currencies, m_iMaxRecentEntries, m_iMaxRecentKeys);
+		return MRX_StorageRules.Create(currencies, m_iMaxRecentEntries, m_iMaxRecentKeys, m_iMaxStashAssets);
 	}
 }

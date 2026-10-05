@@ -1,0 +1,31 @@
+GenericEntity : "{090B9013CF776866}Prefabs/Props/Furniture/TableLong_01/TableLong_01_base.et" {
+ ID "F0DBA538AC2A0552"
+ components {
+  MRX_ShopComponent "{6A89197001F4D092}" {
+   m_sShopId "sample"
+   m_sCatalog "{C0F286ACAD6B0E1B}Configs/Marx/Shop/MRX_SampleCatalog.conf"
+  }
+  ActionsManagerComponent "{6A89197001F53A5A}" {
+   ActionContexts {
+    UserActionContext "{6A89197001F52A88}" {
+     ContextName "MRX_Shop"
+     Position PointInfo "{6A89197001F5602F}" {
+      Offset 0 0.9 0
+     }
+     Radius 2
+     Omnidirectional 1
+    }
+   }
+   additionalActions {
+    MRX_OpenShopAction "{6A89197001F55E00}" {
+     ParentContextList {
+      "MRX_Shop"
+     }
+     UIInfo UIInfo "{6A89197001F5BA8A}" {
+      Name "Trade"
+     }
+    }
+   }
+  }
+ }
+}

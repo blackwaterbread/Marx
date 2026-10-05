@@ -74,7 +74,7 @@ class MRX_Test_WalletMathRetention : MRX_TestCase
 	//------------------------------------------------------------------------------------------------
 	override protected void Run()
 	{
-		MRX_WalletRules rules = MRX_TestUtils.CreateRules(3, 2);
+		MRX_StorageRules rules = MRX_TestUtils.CreateRules(3, 2);
 		MRX_WalletRecord record = MRX_WalletRecord.Create("a");
 		map<string, MRX_WalletRecord> records = MRX_WalletMathTests.Index(record);
 
@@ -118,7 +118,7 @@ class MRX_Test_WalletMathDuplicate : MRX_TestCase
 	//------------------------------------------------------------------------------------------------
 	override protected void Run()
 	{
-		MRX_WalletRules rules = MRX_TestUtils.CreateRules();
+		MRX_StorageRules rules = MRX_TestUtils.CreateRules();
 		MRX_CurrencyDef cash = rules.m_Currencies.Find("cash");
 		MRX_WalletRecord sender = MRX_WalletRecord.Create("a");
 		MRX_WalletRecord receiver = MRX_WalletRecord.Create("b");
@@ -164,7 +164,7 @@ class MRX_Test_WalletMathAtomicTransfer : MRX_TestCase
 	//------------------------------------------------------------------------------------------------
 	override protected void Run()
 	{
-		MRX_WalletRules rules = MRX_TestUtils.CreateRules();
+		MRX_StorageRules rules = MRX_TestUtils.CreateRules();
 		MRX_WalletRecord sender = MRX_WalletRecord.Create("a");
 		MRX_WalletRecord receiver = MRX_WalletRecord.Create("b");
 		receiver.m_mBalances.Set("cash", 999990);
@@ -191,7 +191,7 @@ class MRX_Test_WalletMathSameWalletPostings : MRX_TestCase
 	//------------------------------------------------------------------------------------------------
 	override protected void Run()
 	{
-		MRX_WalletRules rules = MRX_TestUtils.CreateRules();
+		MRX_StorageRules rules = MRX_TestUtils.CreateRules();
 		MRX_WalletRecord record = MRX_WalletRecord.Create("a");
 		map<string, MRX_WalletRecord> records = MRX_WalletMathTests.Index(record);
 
