@@ -9,6 +9,7 @@ GenericEntity {
     ItemPhysAttributes ItemPhysicalAttributes "{6A8A11C7C4512B45}" {
     }
    }
+   UseCapacityCoefficient 0
    MaxCumulativeVolume 200000
    MaxItemSize 300 300 300
    m_fMaxWeight 1000

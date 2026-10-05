@@ -200,6 +200,8 @@ class MRX_SampleAssetsPlugin : WorldEditorPlugin
 		IEntityComponentSource storage = api.CreateComponent(source, "MRX_StashStorageComponent");
 		Log("MRX_StashStorageComponent", storage != null);
 		array<ref ContainerIdPathEntry> storagePath = { new ContainerIdPathEntry("MRX_StashStorageComponent") };
+		// Without a model the storage's own size is tiny, so the capacity comes from these values, not from the size.
+		Log("UseCapacityCoefficient", api.SetVariableValue(source, storagePath, "UseCapacityCoefficient", "0"));
 		Log("MaxCumulativeVolume", api.SetVariableValue(source, storagePath, "MaxCumulativeVolume", "200000"));
 		Log("MaxItemSize", api.SetVariableValue(source, storagePath, "MaxItemSize", "300 300 300"));
 		Log("m_fMaxWeight", api.SetVariableValue(source, storagePath, "m_fMaxWeight", "1000"));

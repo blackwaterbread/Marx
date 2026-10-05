@@ -65,6 +65,8 @@ class MRX_Test_StashContainerSpike : MRX_TestCase
 		}
 
 		Print(string.Format("[MRX_TEST]   container capacity: volume %1, dimensions %2", m_Storage.GetMaxVolumeCapacity(), m_Storage.GetMaxDimensionCapacity()));
+		DumpStorageSource(CONTAINER_PREFAB, "MRX_StashStorageComponent");
+		DumpStorageSource("{06B68C58B72EAAC6}Prefabs/Items/Equipment/Backpacks/Backpack_ALICE_Medium.et", "SCR_UniversalInventoryStorageComponent");
 		containerManager.SetUser(character);
 		MRX_StashStorageComponent.GetOnItemMoved().Insert(OnItemMoved);
 
@@ -78,6 +80,16 @@ class MRX_Test_StashContainerSpike : MRX_TestCase
 	{
 		m_Item = FindCarried(m_Possession.GetCharacter(), ITEM_PREFAB);
 		m_Rifle = FindCarried(m_Possession.GetCharacter(), RIFLE_PREFAB);
+		if (m_Rifle)
+		{
+			InventoryItemComponent rifleItem = InventoryItemComponent.Cast(m_Rifle.FindComponent(InventoryItemComponent));
+			ItemPhysicalAttributes physical;
+			if (rifleItem)
+				physical = ItemPhysicalAttributes.Cast(rifleItem.GetAttributes().FindAttribute(ItemPhysicalAttributes));
+
+			if (physical)
+				Print(string.Format("[MRX_TEST]   rifle volume %1, dimensions %2, container can store %3", physical.GetVolume(), physical.GetDimensions(), m_Storage.PerformVolumeValidation(m_Rifle)));
+		}
 		Check(m_Item != null, "test item in the character inventory");
 		Check(m_Rifle != null, "rifle in the character inventory");
 
@@ -179,6 +191,48 @@ class MRX_Test_StashContainerSpike : MRX_TestCase
 			m_Possession.Release();
 
 		Finish();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Spike only: prints the capacity related settings of a prefab's storage component.
+	protected static void DumpStorageSource(ResourceName prefab, string componentClass)
+	{
+		Resource resource = Resource.Load(prefab);
+		if (!resource || !resource.IsValid())
+			return;
+
+		IEntityComponentSource source = SCR_BaseContainerTools.FindComponentSource(resource, componentClass);
+		if (!source)
+			return;
+
+		float maxVolume;
+		vector maxItemSize;
+		bool useCoefficient;
+		float coefficient;
+		source.Get("MaxCumulativeVolume", maxVolume);
+		source.Get("MaxItemSize", maxItemSize);
+		source.Get("UseCapacityCoefficient", useCoefficient);
+		source.Get("CapacityCoefficient", coefficient);
+		string physicalText;
+		BaseContainer attributes = source.GetObject("Attributes");
+		if (attributes)
+		{
+			BaseContainer physical = attributes.GetObject("ItemPhysAttributes");
+			if (physical)
+			{
+				int strategy;
+				vector dimensions;
+				float volume;
+				float scaler;
+				physical.Get("SizeSetupStrategy", strategy);
+				physical.Get("ItemDimensions", dimensions);
+				physical.Get("ItemVolume", volume);
+				physical.Get("DimensionScaler", scaler);
+				physicalText = string.Format("strategy %1, dimensions %2, volume %3, scaler %4", strategy, dimensions, volume, scaler);
+			}
+		}
+
+		Print(string.Format("[MRX_TEST]   %1: MaxCumulativeVolume %2, MaxItemSize %3, UseCapacityCoefficient %4, CapacityCoefficient %5, physical {%6}", FilePath.StripPath(prefab), maxVolume, maxItemSize, useCoefficient, coefficient, physicalText));
 	}
 
 	//------------------------------------------------------------------------------------------------
