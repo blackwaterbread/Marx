@@ -1,0 +1,21 @@
+GenericEntity {
+ ID "6A8A11C7C451B218"
+ components {
+  MRX_StashStorageComponent "{6A8A11C7C450F6D1}" {
+   Attributes SCR_ItemAttributeCollection "{6A8A11C7C450DDC5}" {
+    ItemDisplayName UIInfo "{6A8A11C7C450CC1E}" {
+     Name "Stash"
+    }
+    ItemPhysAttributes ItemPhysicalAttributes "{6A8A11C7C4512B45}" {
+    }
+   }
+   MaxCumulativeVolume 200000
+   MaxItemSize 300 300 300
+   m_fMaxWeight 1000
+  }
+  MRX_StashContainerManagerComponent "{6A8A11C7C4511AA5}" {
+  }
+  RplComponent "{6A8A11C7C45082B9}" {
+  }
+ }
+}

@@ -13,6 +13,7 @@ class MRX_SampleAssetsPlugin : WorldEditorPlugin
 	static const ResourceName SHOP_BASE_PREFAB = "{090B9013CF776866}Prefabs/Props/Furniture/TableLong_01/TableLong_01_base.et";
 	static const string STASH_PREFAB_FILE = "$Marx_Stash:Prefabs/Marx/Stash/MRX_StashWardrobe.et";
 	static const ResourceName STASH_BASE_PREFAB = "{FD47FF9699A52E82}Prefabs/Props/Furniture/Wardrobe_01.et";
+	static const string STASH_CONTAINER_FILE = "$Marx_Stash:Prefabs/Marx/Stash/MRX_StashContainer.et";
 
 	//! Keeps created container resources alive until the plugin finishes.
 	protected ref array<ref Resource> m_aHolders = {};
@@ -31,6 +32,7 @@ class MRX_SampleAssetsPlugin : WorldEditorPlugin
 		}
 
 		CreateInteractivePrefab(STASH_PREFAB_FILE, STASH_BASE_PREFAB, "MRX_StashPointComponent", new map<string, string>(), "MRX_Stash", "MRX_OpenStashAction", "Stash", "0 1 0", true);
+		CreateStashContainerPrefab();
 		Print(TAG + "sample assets done");
 	}
 
@@ -156,6 +158,92 @@ class MRX_SampleAssetsPlugin : WorldEditorPlugin
 			api.EndEntityAction();
 
 		Print(TAG + "saved " + GetResourceName(absPath));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! A plain entity without model: replication, the stash storage and the stash container manager.
+	protected void CreateStashContainerPrefab()
+	{
+		string absPath;
+		Workbench.GetAbsolutePath(STASH_CONTAINER_FILE, absPath, false);
+		if (FileIO.FileExists(absPath))
+		{
+			Print(TAG + "already exists, not overwritten: " + absPath, LogLevel.WARNING);
+			return;
+		}
+
+		WorldEditorAPI api = SCR_WorldEditorToolHelper.GetWorldEditorAPI();
+		if (!api || !api.GetWorld())
+		{
+			Print(TAG + "open a world first", LogLevel.ERROR);
+			return;
+		}
+
+		FileIO.MakeDirectory(FilePath.StripFileName(absPath));
+		bool manageAction = !api.IsDoingEditAction();
+		if (manageAction)
+			api.BeginEntityAction("Marx stash container");
+
+		IEntitySource source = api.CreateEntity("GenericEntity", string.Empty, api.GetCurrentEntityLayerId(), null, vector.Zero, vector.Zero);
+		if (!source)
+		{
+			Print(TAG + "CreateEntity GenericEntity failed", LogLevel.ERROR);
+			if (manageAction)
+				api.EndEntityAction();
+
+			return;
+		}
+
+		source.ClearVariable("coords");
+		Log("RplComponent", api.CreateComponent(source, "RplComponent") != null);
+
+		IEntityComponentSource storage = api.CreateComponent(source, "MRX_StashStorageComponent");
+		Log("MRX_StashStorageComponent", storage != null);
+		array<ref ContainerIdPathEntry> storagePath = { new ContainerIdPathEntry("MRX_StashStorageComponent") };
+		Log("MaxCumulativeVolume", api.SetVariableValue(source, storagePath, "MaxCumulativeVolume", "200000"));
+		Log("MaxItemSize", api.SetVariableValue(source, storagePath, "MaxItemSize", "300 300 300"));
+		Log("m_fMaxWeight", api.SetVariableValue(source, storagePath, "m_fMaxWeight", "1000"));
+		Log("Attributes", api.CreateObjectVariableMember(source, storagePath, "Attributes", "SCR_ItemAttributeCollection"));
+		array<ref ContainerIdPathEntry> attributesPath = { new ContainerIdPathEntry("MRX_StashStorageComponent"), new ContainerIdPathEntry("Attributes") };
+		Log("ItemDisplayName", api.CreateObjectVariableMember(source, attributesPath, "ItemDisplayName", "UIInfo"));
+		array<ref ContainerIdPathEntry> namePath = { new ContainerIdPathEntry("MRX_StashStorageComponent"), new ContainerIdPathEntry("Attributes"), new ContainerIdPathEntry("ItemDisplayName") };
+		Log("ItemDisplayName.Name", api.SetVariableValue(source, namePath, "Name", "Stash"));
+		Log("ItemPhysAttributes", api.CreateObjectVariableMember(source, attributesPath, "ItemPhysAttributes", "ItemPhysicalAttributes"));
+
+		Log("MRX_StashContainerManagerComponent", api.CreateComponent(source, "MRX_StashContainerManagerComponent") != null);
+
+		// Property names, to pick the capacity settings.
+		if (storage)
+		{
+			DumpVars("storage", storage);
+			BaseContainer attributes = storage.GetObject("Attributes");
+			if (attributes)
+			{
+				DumpVars("attributes", attributes);
+				BaseContainer physical = attributes.GetObject("ItemPhysAttributes");
+				if (physical)
+					DumpVars("physical", physical);
+			}
+		}
+
+		Log("CreateEntityTemplate", api.CreateEntityTemplate(source, absPath));
+		api.DeleteEntity(source);
+		if (manageAction)
+			api.EndEntityAction();
+
+		Print(TAG + "saved " + GetResourceName(absPath));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void DumpVars(string label, notnull BaseContainer container)
+	{
+		string names;
+		for (int i = 0, count = container.GetNumVars(); i < count; i++)
+		{
+			names += container.GetVarName(i) + " ";
+		}
+
+		Print(TAG + label + " vars: " + names);
 	}
 
 	//------------------------------------------------------------------------------------------------
