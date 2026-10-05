@@ -3,3 +3,6 @@ resourceDatabase.rdb
 
 # enfusion-workbench-mcp dev handlers (remove with wb_cleanup before publish)
 addons/*/Scripts/WorkbenchGame/EnfusionMCP/
+
+# Local test worlds (not part of the mod)
+addons/Example/TestEntity/
