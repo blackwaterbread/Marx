@@ -24,8 +24,8 @@ stash point; both bring `Marx_UI`, which also shows the wallet HUD.
   recent ledger entries per wallet. Balances are pushed to the owning client.
 - **Shops:** a component that turns any entity into a shop, `.conf` catalogs, purchase into the player's inventory,
   sell-back at a configurable percentage, validators for custom rules.
-- **Stash:** a personal stash that opens like a large bag in the vanilla inventory at stash points. Stored items keep
-  their attachments, magazines, contents, damage and fuel. Assets move through `STASHED`, `DEPLOYED`, `LOST` and `CONSUMED`; a loss policy decides what happens on death
+- **Stash:** a personal stash that opens as its own panel of the vanilla inventory at stash points (pages of cells;
+  every item keeps its cell). Stored items keep their attachments, magazines, contents, damage and fuel. Assets move through `STASHED`, `DEPLOYED`, `LOST` and `CONSUMED`; a loss policy decides what happens on death
   and after a server restart.
 - **Storage:** the game's own persistence system (`GamemodeStorage`, committed after every change), with an in-memory
   fallback. A REST backend for shared databases is planned.
@@ -33,6 +33,7 @@ stash point; both bring `Marx_UI`, which also shows the wallet HUD.
 
 ## Documentation
 
+- **[Using Marx in your mod](docs/guide.md)**: step-by-step guide for mod authors
 - [Getting started](docs/getting-started.md): dependencies, server setup, settings
 - [Storage](docs/storage.md): persistent storage, the reference configs, merging them into your scenario
 - [Economy API](docs/economy.md): owners, currencies, transactions, callbacks, events
