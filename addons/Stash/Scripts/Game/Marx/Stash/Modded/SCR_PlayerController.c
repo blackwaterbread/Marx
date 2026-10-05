@@ -1,5 +1,5 @@
 //! Stash container requests: the client asks to open the stash at a stash point, the server fills a container and
-//! tells the client to show it in the vanilla inventory. Closing the inventory closes the stash.
+//! tells the client to show it as a panel of the vanilla inventory. Closing the inventory or the panel closes the stash.
 modded class SCR_PlayerController
 {
 	protected static const int MRX_CONTAINER_WAIT_MS = 100;
@@ -10,11 +10,14 @@ modded class SCR_PlayerController
 	protected RplId m_MRX_StashContainerId;
 	protected int m_iMRX_StashContainerWaitMs;
 	protected bool m_bMRX_StashInventoryOpen;
+	//! Client: the stash point of the last open request. Weak.
+	protected IEntity m_MRX_StashPoint;
 
 	//------------------------------------------------------------------------------------------------
 	//! Client: asks the server to open the player's stash at the stash point.
 	void MRX_RequestStashOpen(notnull IEntity stashPoint)
 	{
+		m_MRX_StashPoint = stashPoint;
 		MRX_GetOnStashResult().Remove(MRX_OnStashResultHint);
 		MRX_GetOnStashResult().Insert(MRX_OnStashResultHint);
 		Rpc(MRX_RpcAsk_StashOpen, SCR_EntityHelper.EntityToRplId(stashPoint));
@@ -73,40 +76,75 @@ modded class SCR_PlayerController
 	protected void MRX_RpcDo_StashContainerClose()
 	{
 		GetGame().GetCallqueue().Remove(MRX_OpenStashContainer);
+		GetGame().GetCallqueue().Remove(MRX_ShowStashPanel);
+		MRX_StashStorageComponent storage = MRX_GetStashStorage();
 		m_MRX_StashContainerId = RplId.Invalid();
 		if (!m_bMRX_StashInventoryOpen)
 			return;
 
+		// Only the stash panel goes; the inventory stays open.
 		MRX_StopStashInventory(false);
-		SCR_InventoryStorageManagerComponent manager = MRX_GetLocalInventoryManager();
-		if (manager)
-			manager.CloseInventory();
+		SCR_InventoryMenuUI menu = MRX_GetInventoryMenu();
+		if (menu && menu.GetOpenedStorage(storage))
+			menu.GetOpenedStorage(storage).CloseStorage();
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Client: opens the vanilla inventory on the container once it has replicated.
+	//! Client: opens the vanilla inventory once the container has replicated.
 	protected void MRX_OpenStashContainer()
 	{
-		IEntity container = SCR_EntityHelper.RplIdToEntity(m_MRX_StashContainerId);
+		MRX_StashStorageComponent storage = MRX_GetStashStorage();
 		SCR_InventoryStorageManagerComponent manager = MRX_GetLocalInventoryManager();
-		if (!container || !manager)
+		if (!storage || !manager)
 		{
-			m_iMRX_StashContainerWaitMs += MRX_CONTAINER_WAIT_MS;
-			if (m_iMRX_StashContainerWaitMs < MRX_CONTAINER_WAIT_LIMIT_MS)
-				GetGame().GetCallqueue().CallLater(MRX_OpenStashContainer, MRX_CONTAINER_WAIT_MS);
-			else
-				Rpc(MRX_RpcAsk_StashClose);
+			if (!MRX_WaitForStash())
+				return;
+
+			GetGame().GetCallqueue().CallLater(MRX_OpenStashContainer, MRX_CONTAINER_WAIT_MS);
+			return;
+		}
+
+		storage.SetPreviewEntity(m_MRX_StashPoint);
+		manager.m_OnInventoryOpenInvoker.Remove(MRX_OnInventoryOpenChanged);
+		manager.m_OnInventoryOpenInvoker.Insert(MRX_OnInventoryOpenChanged);
+		manager.OpenInventory();
+		m_iMRX_StashContainerWaitMs = 0;
+		GetGame().GetCallqueue().CallLater(MRX_ShowStashPanel, MRX_CONTAINER_WAIT_MS);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Client: adds the stash panel to the open inventory. The container stays out of the vicinity list.
+	protected void MRX_ShowStashPanel()
+	{
+		MRX_StashStorageComponent storage = MRX_GetStashStorage();
+		SCR_InventoryMenuUI menu = MRX_GetInventoryMenu();
+		if (!storage || !menu)
+		{
+			if (MRX_WaitForStash())
+				GetGame().GetCallqueue().CallLater(MRX_ShowStashPanel, MRX_CONTAINER_WAIT_MS);
 
 			return;
 		}
 
-		manager.m_OnInventoryOpenInvoker.Remove(MRX_OnInventoryOpenChanged);
-		manager.m_OnInventoryOpenInvoker.Insert(MRX_OnInventoryOpenChanged);
-		manager.SetStorageToOpen(container);
-		manager.OpenInventory();
+		menu.MRX_OpenStashPanel(storage);
 		m_bMRX_StashInventoryOpen = true;
+		MRX_StashStorageComponent.GetOnItemMoved().Remove(MRX_OnStashItemMoved);
+		MRX_StashStorageComponent.GetOnItemMoved().Insert(MRX_OnStashItemMoved);
 		GetGame().GetCallqueue().Remove(MRX_WatchStashInventory);
 		GetGame().GetCallqueue().CallLater(MRX_WatchStashInventory, MRX_INVENTORY_WATCH_MS, true);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Client: counts the waiting time for the container or the menu; past the limit the stash is closed.
+	//! \return True while waiting may continue.
+	protected bool MRX_WaitForStash()
+	{
+		m_iMRX_StashContainerWaitMs += MRX_CONTAINER_WAIT_MS;
+		if (m_iMRX_StashContainerWaitMs < MRX_CONTAINER_WAIT_LIMIT_MS)
+			return true;
+
+		MRX_StopStashInventory(true);
+		return false;
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -119,8 +157,28 @@ modded class SCR_PlayerController
 	//------------------------------------------------------------------------------------------------
 	protected void MRX_WatchStashInventory()
 	{
-		if (m_bMRX_StashInventoryOpen && !GetGame().GetMenuManager().FindMenuByPreset(ChimeraMenuPreset.Inventory20Menu))
+		SCR_InventoryMenuUI menu = MRX_GetInventoryMenu();
+		if (m_bMRX_StashInventoryOpen && (!menu || !menu.GetOpenedStorage(MRX_GetStashStorage())))
 			MRX_StopStashInventory(true);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Client: the server moves items too (refused moves are undone), which the panel does not notice on its own.
+	protected void MRX_OnStashItemMoved(MRX_StashStorageComponent storage, IEntity item, bool added)
+	{
+		if (storage != MRX_GetStashStorage())
+			return;
+
+		GetGame().GetCallqueue().Remove(MRX_RefreshStashPanel);
+		GetGame().GetCallqueue().CallLater(MRX_RefreshStashPanel);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void MRX_RefreshStashPanel()
+	{
+		SCR_InventoryMenuUI menu = MRX_GetInventoryMenu();
+		if (menu && menu.GetOpenedStorage(MRX_GetStashStorage()))
+			menu.GetOpenedStorage(MRX_GetStashStorage()).Refresh();
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -129,12 +187,30 @@ modded class SCR_PlayerController
 	{
 		m_bMRX_StashInventoryOpen = false;
 		GetGame().GetCallqueue().Remove(MRX_WatchStashInventory);
+		GetGame().GetCallqueue().Remove(MRX_RefreshStashPanel);
+		MRX_StashStorageComponent.GetOnItemMoved().Remove(MRX_OnStashItemMoved);
 		SCR_InventoryStorageManagerComponent manager = MRX_GetLocalInventoryManager();
 		if (manager)
 			manager.m_OnInventoryOpenInvoker.Remove(MRX_OnInventoryOpenChanged);
 
 		if (notifyServer)
 			Rpc(MRX_RpcAsk_StashClose);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected MRX_StashStorageComponent MRX_GetStashStorage()
+	{
+		IEntity container = SCR_EntityHelper.RplIdToEntity(m_MRX_StashContainerId);
+		if (!container)
+			return null;
+
+		return MRX_StashStorageComponent.Cast(container.FindComponent(MRX_StashStorageComponent));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected static SCR_InventoryMenuUI MRX_GetInventoryMenu()
+	{
+		return SCR_InventoryMenuUI.Cast(GetGame().GetMenuManager().FindMenuByPreset(ChimeraMenuPreset.Inventory20Menu));
 	}
 
 	//------------------------------------------------------------------------------------------------

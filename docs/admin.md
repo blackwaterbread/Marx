@@ -3,12 +3,14 @@
 `MRX_AdminCommand` adds the `marx` server command:
 
 ```
+#marx balance
 #marx balance <player> [currency]
 #marx give <player> <amount> [currency]
 #marx take <player> <amount> [currency]
 ```
 
 - In the chat, for logged-in administrators (`#login`). Over RCON, with admin permission.
+- `#marx balance` without a player shows your own balance (chat only).
 - `<player>` is a connected player's ID or exact name; put names with spaces in quotes.
 - `<amount>` is a whole number from 1 to 999999999.
 - Without a currency, `cash` is used if it exists, otherwise the only configured currency.

@@ -101,6 +101,8 @@ class MRX_TestRunner : Managed
 {
 	static const string TAG = "[MRX_TEST] ";
 	static const int TIMEOUT_MS = 5000;
+	//! The tests run on game start only when Workbench was started with this parameter.
+	static const string RUN_PARAM = "mrxTests";
 	static const string AUTO_CLOSE_PARAM = "mrxTestsAutoClose";
 	//! Players without a backend identity get a name-based test owner ID (see MRX_TestIdentity.c).
 	static const string TEST_IDENTITY_PARAM = "mrxTestIdentity";
@@ -258,7 +260,7 @@ modded class SCR_BaseGameMode
 	override protected void OnGameStart()
 	{
 		super.OnGameStart();
-		if (Replication.IsServer())
+		if (Replication.IsServer() && System.IsCLIParam(MRX_TestRunner.RUN_PARAM))
 			GetGame().GetCallqueue().CallLater(MRX_TestRunner.RunAll, 1000);
 	}
 }

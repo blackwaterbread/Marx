@@ -56,7 +56,7 @@ class MRX_AdminStep : Managed
 }
 
 //------------------------------------------------------------------------------------------------
-//! Help, argument errors, balance, give and take (by ID and by quoted name), refused take; balance ends unchanged.
+//! Help, argument errors, balance (also the executor's own), give and take (by ID and by quoted name), refused take; balance ends unchanged.
 class MRX_Test_AdminCommand : MRX_TestCase
 {
 	protected static const int POLL_MS = 100;
@@ -106,6 +106,7 @@ class MRX_Test_AdminCommand : MRX_TestCase
 		AddStep({"marx", "give", id, "1234567890"}, EServerCmdResultType.PARAMETERS, "Invalid amount");
 		AddStep({"marx", "give", id, "5", "gold"}, EServerCmdResultType.PARAMETERS, "Unknown currency");
 		AddStep({"marx", "balance", id}, EServerCmdResultType.OK, string.Format(": %1 cash", m_iStartBalance));
+		AddStep({"marx", "balance"}, EServerCmdResultType.OK, string.Format("[%1]: %2 cash", id, m_iStartBalance));
 		AddStep({"marx", "give", id, "15"}, EServerCmdResultType.OK, "give 15 cash").CheckBalance(15);
 		AddStep({"marx", "balance", quotedName, "cash"}, EServerCmdResultType.OK, string.Format(": %1 cash", m_iStartBalance + 15));
 		AddStep({"marx", "take", quotedName, "15"}, EServerCmdResultType.OK, "take 15 cash").CheckBalance(0);

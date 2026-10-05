@@ -219,6 +219,7 @@ class MRX_Test_StashPointFlow : MRX_TestCase
 	protected IEntity m_StashPoint;
 	protected string m_sOwnerId;
 	protected string m_sAssetId;
+	protected string m_sNewAssetId;
 	protected IEntity m_Item;
 	protected IEntity m_NewItem;
 	protected int m_iWaitedMs;
@@ -291,8 +292,9 @@ class MRX_Test_StashPointFlow : MRX_TestCase
 	protected void WaitOpen()
 	{
 		MRX_StashSession session = GetSession();
-		bool inventoryOpen = GetGame().GetMenuManager().FindMenuByPreset(ChimeraMenuPreset.Inventory20Menu) != null;
-		if (!session || !session.IsReady() || !inventoryOpen)
+		SCR_InventoryMenuUI menu = SCR_InventoryMenuUI.Cast(GetGame().GetMenuManager().FindMenuByPreset(ChimeraMenuPreset.Inventory20Menu));
+		bool panelOpen = menu && session && menu.GetOpenedStorage(session.GetStorage()) != null;
+		if (!session || !session.IsReady() || !panelOpen)
 		{
 			m_iWaitedMs += STEP_MS;
 			if (m_iWaitedMs < WAIT_LIMIT_MS)
@@ -301,21 +303,22 @@ class MRX_Test_StashPointFlow : MRX_TestCase
 				return;
 			}
 
-			Check(false, string.Format("stash opens (session %1, inventory %2)", session != null, inventoryOpen));
+			Check(false, string.Format("stash opens as an inventory panel (session %1, inventory %2, panel %3)", session != null, menu != null, panelOpen));
 			End(false, string.Empty);
 			return;
 		}
 
+		// Assets are found by ID: the player's stash may hold other items of the same prefabs.
 		if (m_bReopened)
 		{
-			Check(FindInContainer(ITEM_PREFAB) != null, "stored item shown again after reopening");
-			Check(FindInContainer(NEW_ITEM_PREFAB) != null, "new item shown again after reopening");
+			Check(session.FindShownItem(m_sAssetId) != null, "stored item shown again after reopening");
+			Check(!m_sNewAssetId.IsEmpty() && session.FindShownItem(m_sNewAssetId) != null, "new item shown again after reopening");
 			Close();
 			GetGame().GetCallqueue().CallLater(CheckClosedForCleanup, STEP_MS * 2);
 			return;
 		}
 
-		m_Item = FindInContainer(ITEM_PREFAB);
+		m_Item = session.FindShownItem(m_sAssetId);
 		Check(m_Item != null, "granted item shown in the container");
 		if (!m_Item)
 		{
@@ -378,13 +381,16 @@ class MRX_Test_StashPointFlow : MRX_TestCase
 		{
 			MRX_AssetRecord granted = record.FindAsset(m_sAssetId);
 			Check(granted && granted.m_eState == MRX_EAssetState.STASHED, "granted asset STASHED after put back");
+			MRX_StashSession session = GetSession();
 			foreach (MRX_AssetRecord asset : record.m_aAssets)
 			{
-				if (asset.m_sPrefab == NEW_ITEM_PREFAB && asset.m_eState == MRX_EAssetState.STASHED && !m_aCleanupIds.Contains(asset.m_sId))
-					m_aCleanupIds.Insert(asset.m_sId);
+				if (m_NewItem && session && asset.m_eState == MRX_EAssetState.STASHED && session.FindShownItem(asset.m_sId) == m_NewItem)
+					m_sNewAssetId = asset.m_sId;
 			}
 
-			CheckInt(m_aCleanupIds.Count(), 2, "new item stored as a new asset");
+			Check(!m_sNewAssetId.IsEmpty() && m_sNewAssetId != m_sAssetId, "new item stored as a new asset");
+			if (!m_sNewAssetId.IsEmpty() && m_sNewAssetId != m_sAssetId)
+				m_aCleanupIds.Insert(m_sNewAssetId);
 		}
 
 		Close();
@@ -443,24 +449,6 @@ class MRX_Test_StashPointFlow : MRX_TestCase
 		InventoryStorageManagerComponent manager = GetCharacterManager();
 		BaseInventoryStorageComponent target = manager.FindStorageForItem(item);
 		Check(target && manager.TryMoveItemToStorage(item, target), "move out of the container accepted");
-	}
-
-	//------------------------------------------------------------------------------------------------
-	protected IEntity FindInContainer(ResourceName prefab)
-	{
-		MRX_StashSession session = GetSession();
-		if (!session || !session.GetStorage())
-			return null;
-
-		array<IEntity> items = {};
-		session.GetStorage().GetAll(items);
-		foreach (IEntity item : items)
-		{
-			if (SCR_ResourceNameUtils.GetPrefabName(item) == prefab)
-				return item;
-		}
-
-		return null;
 	}
 
 	//------------------------------------------------------------------------------------------------

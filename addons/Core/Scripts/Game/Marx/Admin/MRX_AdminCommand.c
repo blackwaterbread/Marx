@@ -1,4 +1,5 @@
 //! Admin wallet command (API v0), from the chat as "#marx ..." (logged-in administrators) or over RCON (admin permission):
+//!   marx balance                     (chat only: the executing player's own balance)
 //!   marx balance <player> [currency]
 //!   marx give <player> <amount> [currency]
 //!   marx take <player> <amount> [currency]
@@ -87,7 +88,9 @@ class MRX_AdminCommand : ScrServerCommand
 	//------------------------------------------------------------------------------------------------
 	protected ScrServerCmdResult HandleCommand(array<string> argv, int executorId)
 	{
-		if (argv.Count() < 3)
+		// "#marx balance" without a player: the executing player's own balance (chat only).
+		bool ownBalance = argv.Count() == 2 && argv[1] == "balance" && executorId > 0;
+		if (argv.Count() < 3 && !ownBalance)
 			return GetHelp();
 
 		MRX_EconomyService economy = MRX_Marx.GetEconomy();
@@ -102,7 +105,10 @@ class MRX_AdminCommand : ScrServerCommand
 
 		// Amount and currency follow the player argument.
 		array<string> args = {};
-		int targetId = ParsePlayer(argv, 2, args);
+		int targetId = executorId;
+		if (!ownBalance)
+			targetId = ParsePlayer(argv, 2, args);
+
 		if (targetId <= 0)
 			return ScrServerCmdResult("Player not found. Use a connected player's ID or exact name.", EServerCmdResultType.ERR);
 
@@ -160,7 +166,7 @@ class MRX_AdminCommand : ScrServerCommand
 	//------------------------------------------------------------------------------------------------
 	protected ScrServerCmdResult GetHelp()
 	{
-		return ScrServerCmdResult("Marx wallet commands:\n#marx balance <player> [currency]\n#marx give <player> <amount> [currency]\n#marx take <player> <amount> [currency]\n<player> = player ID or exact name (quoted if it has spaces)", EServerCmdResultType.OK);
+		return ScrServerCmdResult("Marx wallet commands:\n#marx balance (in the chat: your own balance)\n#marx balance <player> [currency]\n#marx give <player> <amount> [currency]\n#marx take <player> <amount> [currency]\n<player> = player ID or exact name (quoted if it has spaces)", EServerCmdResultType.OK);
 	}
 
 	//------------------------------------------------------------------------------------------------

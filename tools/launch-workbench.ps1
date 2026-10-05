@@ -10,6 +10,10 @@ in the Steam library folders listed in Steam's libraryfolders.vdf, unless given 
 .PARAMETER Project
 Addon folder under addons/ to open. Default: Example.
 
+.PARAMETER Tests
+Passes -mrxTests: the Workbench-only Marx test harness runs whenever Play mode starts. Implied by
+-AutoCloseTests and -PeerTest.
+
 .PARAMETER AutoCloseTests
 Passes -mrxTestsAutoClose: the Workbench-only Marx test harness leaves Play mode after its run.
 
@@ -42,6 +46,7 @@ powershell -ExecutionPolicy Bypass -File tools/launch-workbench.ps1 -AutoCloseTe
 #>
 param(
 	[string]$Project = "Example",
+	[switch]$Tests,
 	[switch]$AutoCloseTests,
 	[switch]$TestIdentity,
 	[switch]$PeerTest,
@@ -134,6 +139,11 @@ $arguments = @("-gproj", "`"$gproj`"", "-addonsDir", "`"$($addonDirs -join ',')`
 if (-not $NoScriptAuthorizeAll)
 {
 	$arguments += "-scriptAuthorizeAll"
+}
+
+if ($Tests -or $AutoCloseTests -or $PeerTest)
+{
+	$arguments += "-mrxTests"
 }
 
 if ($AutoCloseTests)

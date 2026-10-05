@@ -81,11 +81,13 @@ is a ready example.
 
 ### Stash in the vanilla inventory (Marx_Stash)
 
-Using the "Stash" action opens the player's stash like a large bag in the vanilla inventory:
+Using the "Stash" action opens the vanilla inventory with the player's stash as its own panel:
 
 1. The server spawns a personal container (`Prefabs/Marx/Stash/MRX_StashContainer.et`, no model) at the stash point and
    restores the player's `STASHED` assets into it. Their records stay `STASHED` while they lie in the container.
-2. The client opens the vanilla inventory on that container. Items are moved by drag and drop as usual.
+2. The client opens the vanilla inventory and shows the container as a storage panel (`OpenStorageAsContainer`) with
+   the stash point as its preview. The container is never listed in the vicinity. Items are moved by drag and drop
+   as usual; the quick move from the character's inventory goes into the stash instead of onto the ground.
 3. Every move is committed right away (one frame later, so intermediate moves do not count):
    - an item moved out of the container: `TakeWorldItem` (`DEPLOYED`, bound to the item)
    - an item moved in: `StoreWorldItem` (a bound asset of the player goes back to `STASHED`, any other item becomes a
@@ -95,9 +97,14 @@ Using the "Stash" action opens the player's stash like a large bag in the vanill
 4. Closing the inventory, walking away from the stash point, dying or leaving closes the stash: the container and the
    items still inside are removed (they stay `STASHED`).
 
-Only the player who opened the container may take items out (`MRX_StashContainerManagerComponent`). The container
+Only the player who opened the container may take items out (`MRX_StashContainerManagerComponent`), and items carried
+by other characters cannot be put in (`MRX_StashStorageComponent.CanStoreItem`). The container
 holds up to 200000 cm3 and items up to 300 cm per side (`MaxCumulativeVolume`, `MaxItemSize` with
 `UseCapacityCoefficient` off, because the container has no model); the asset limit of the settings applies as well.
+The items may also fill at most 3 pages of the stash panel (6 x 8 cells each; `m_iMaxPages` on
+`MRX_StashStorageComponent`, 0 = no limit). Every item counts with its cell size, identical items too, although the
+panel shows identical items in one slot. Items already stashed are always shown, even beyond a lowered limit. The
+panel (`MRX_StashPanelUI`) shows all allowed pages from the start; items are laid out from the first page on.
 
 Server side, `MRX_StashSessions.Get()` returns the open containers (`MRX_StashSessionManager`).
 

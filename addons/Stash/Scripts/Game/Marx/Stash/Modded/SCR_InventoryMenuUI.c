@@ -1,0 +1,153 @@
+//! Stash panel in the vanilla inventory: the stash container is opened as its own storage panel (OpenStorageAsContainer).
+//! While it is open, the vicinity panel (items on the ground) is hidden.
+modded class SCR_InventoryMenuUI
+{
+	protected bool m_bMRX_QuickMove;
+
+	//------------------------------------------------------------------------------------------------
+	//! Opens the stash container as a storage panel without a close button and hides the vicinity panel.
+	void MRX_OpenStashPanel(notnull MRX_StashStorageComponent storage)
+	{
+		// OpenStorageAsContainer closes a storage that is already open.
+		if (GetOpenedStorage(storage))
+			return;
+
+		OpenStorageAsContainer(storage, false, true);
+
+		// Vanilla fills the capacity bar of a new panel only on refresh; until then it shows the widget default.
+		SCR_InventoryOpenedStorageUI panel = GetOpenedStorage(storage);
+		if (panel)
+			panel.Refresh();
+
+		MRX_UpdateVicinityVisibility();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! \return The open stash panel, or null.
+	SCR_InventoryOpenedStorageUI MRX_FindStashPanel()
+	{
+		foreach (SCR_InventoryOpenedStorageUI panel : m_aOpenedStoragesUI)
+		{
+			if (panel && MRX_StashStorageComponent.Cast(panel.GetStorage()))
+				return panel;
+		}
+
+		return null;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	bool MRX_IsVicinityShown()
+	{
+		return m_wLootStorage && m_wLootStorage.IsVisible();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! The vicinity panel is only hidden, not removed: vanilla code uses it without null checks.
+	protected void MRX_UpdateVicinityVisibility()
+	{
+		if (m_wLootStorage)
+			m_wLootStorage.SetVisible(!MRX_FindStashPanel());
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected SCR_InventoryOpenedStorageUI CreateOpenedStorageUI(BaseInventoryStorageComponent storage)
+	{
+		if (!MRX_StashStorageComponent.Cast(storage))
+			return super.CreateOpenedStorageUI(storage);
+
+		// Same size as the vicinity panel (SCR_InventoryStorageLootUI), which the stash panel replaces.
+		return new MRX_StashPanelUI(storage, null, this, 0, {storage}, MRX_StashStorageComponent.PAGE_COLUMNS, MRX_StashStorageComponent.PAGE_ROWS);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Vanilla rebuilds the vicinity panel when other storages are opened or the last one is closed.
+	override void ShowVicinity(bool compact = false)
+	{
+		super.ShowVicinity(compact);
+		MRX_UpdateVicinityVisibility();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void RemoveOpenStorage(SCR_InventoryOpenedStorageUI openedStorage)
+	{
+		super.RemoveOpenStorage(openedStorage);
+		MRX_UpdateVicinityVisibility();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void RefreshLootUIListener()
+	{
+		// The stash container has no bounds, which vanilla takes as out of reach. The stash session closes it by distance.
+		array<SCR_InventoryOpenedStorageUI> stashPanels = {};
+		for (int i = m_aOpenedStoragesUI.Count() - 1; i >= 0; i--)
+		{
+			SCR_InventoryOpenedStorageUI panel = m_aOpenedStoragesUI[i];
+			if (panel && MRX_StashStorageComponent.Cast(panel.GetStorage()))
+			{
+				stashPanels.Insert(panel);
+				m_aOpenedStoragesUI.Remove(i);
+			}
+		}
+
+		super.RefreshLootUIListener();
+
+		foreach (SCR_InventoryOpenedStorageUI stashPanel : stashPanels)
+		{
+			m_aOpenedStoragesUI.Insert(stashPanel);
+		}
+
+		// Other panels closed meanwhile may have shown the vicinity panel again.
+		if (!stashPanels.IsEmpty())
+			MRX_UpdateVicinityVisibility();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void MoveBetweenToVicinity()
+	{
+		m_bMRX_QuickMove = true;
+		super.MoveBetweenToVicinity();
+		m_bMRX_QuickMove = false;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void MoveToVicinity(IEntity pItem)
+	{
+		SCR_InventoryOpenedStorageUI stashPanel;
+		if (m_bMRX_QuickMove)
+			stashPanel = MRX_FindStashPanel();
+
+		if (!stashPanel || !m_InventoryManager.CanMoveItem(pItem))
+		{
+			super.MoveToVicinity(pItem);
+			return;
+		}
+
+		// Quick move while the stash is open: into the stash instead of onto the ground.
+		BaseInventoryStorageComponent storageFrom = m_pSelectedSlotUI.GetStorageUI().GetStorage();
+		m_pCallBack.m_pStorageFrom = GetStorageUIByBaseStorageComponent(storageFrom);
+		if (!m_pCallBack.m_pStorageFrom)
+			m_pCallBack.m_pStorageFrom = m_pSelectedSlotUI.GetStorageUI();
+
+		m_pCallBack.m_pStorageTo = stashPanel;
+		m_InventoryManager.InsertItem(pItem, stashPanel.GetStorage(), storageFrom, m_pCallBack);
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! The stash panel shows the stash point (set on the storage by the client) instead of the invisible container.
+modded class SCR_InventoryStorageBaseUI
+{
+	//------------------------------------------------------------------------------------------------
+	override protected void SetPreviewItem()
+	{
+		super.SetPreviewItem();
+
+		MRX_StashStorageComponent stash = MRX_StashStorageComponent.Cast(m_Storage);
+		ItemPreviewWidget renderPreview = ItemPreviewWidget.Cast(m_wPreviewImage);
+		ChimeraWorld world = ChimeraWorld.CastFrom(GetGame().GetWorld());
+		if (!stash || !stash.GetPreviewEntity() || !renderPreview || !world || !world.GetItemPreviewManager())
+			return;
+
+		world.GetItemPreviewManager().SetPreviewItem(renderPreview, stash.GetPreviewEntity(), null, true);
+	}
+}

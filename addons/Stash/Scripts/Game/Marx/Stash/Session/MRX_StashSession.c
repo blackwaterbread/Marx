@@ -84,6 +84,13 @@ class MRX_StashSession : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! \return The item of a STASHED asset in the container, or null.
+	IEntity FindShownItem(string assetId)
+	{
+		return m_mShown.Get(assetId);
+	}
+
+	//------------------------------------------------------------------------------------------------
 	//! Spawns the container at the stash point and restores the stashed items into it.
 	//! \return False when the container cannot be created.
 	bool Start(ResourceName containerPrefab)
@@ -158,6 +165,8 @@ class MRX_StashSession : Managed
 			return;
 		}
 
+		// Stashed items always show, also when they take more pages than the container allows now.
+		m_Storage.SetRestoring(true);
 		MRX_EntityAssetWorld world = MRX_EntityAssetWorld.Cast(GetStash().GetWorld());
 		foreach (MRX_AssetRecord asset : record.m_aAssets)
 		{
@@ -194,6 +203,9 @@ class MRX_StashSession : Managed
 	//------------------------------------------------------------------------------------------------
 	protected void OnRestored()
 	{
+		if (m_Storage)
+			m_Storage.SetRestoring(false);
+
 		if (m_bClosing)
 		{
 			DeleteContainer();

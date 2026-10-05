@@ -5,7 +5,7 @@
 `tools/launch-workbench.ps1` starts Arma Reforger Workbench with the Marx addons registered, without the launcher:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tools/launch-workbench.ps1 [-AutoCloseTests] [-TestIdentity] [-PeerTest]
+powershell -ExecutionPolicy Bypass -File tools/launch-workbench.ps1 [-Tests] [-AutoCloseTests] [-TestIdentity] [-PeerTest]
 ```
 
 It opens `Marx_Example` (which loads all Marx addons), writes the logs to a new
@@ -15,7 +15,7 @@ Steam library folders. `-DryRun` prints the command line only.
 ## Test harness
 
 `addons/Example/Scripts/Game/Marx/Tests/` (Workbench only, `#ifdef WORKBENCH`) runs on server game start in Play mode
-and logs `[MRX_TEST] PASS|FAIL|SKIP <test>` and `[MRX_TEST] DONE passed= failed= skipped=`.
+when Workbench was started with `-mrxTests`, and logs `[MRX_TEST] PASS|FAIL|SKIP <test>` and `[MRX_TEST] DONE passed= failed= skipped=`.
 
 - Unit-style tests use the in-memory backend and fake worlds (economy, shop, stash rules and services).
 - Native tests need the Marx persistence config: select `Configs/Marx/Systems/MRX_GameMasterSystems.conf` under
@@ -27,6 +27,7 @@ Command line switches (passed by the launch script):
 
 | Switch | Effect |
 |---|---|
+| `-mrxTests` | runs the tests whenever Play mode starts (launch script: `-Tests`, implied by `-AutoCloseTests` and `-PeerTest`) |
 | `-mrxTestsAutoClose` | leaves Play mode 2 s after the run |
 | `-mrxTestIdentity` | players without a backend identity get a name-based test owner, so owner-dependent tests also run while the Bohemia backend is unreachable |
 | `-mrxTestsPeer` | waits up to 120 s for a PeerTool client and checks the balance push to it (otherwise skipped) |
