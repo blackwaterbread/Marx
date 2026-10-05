@@ -79,6 +79,31 @@ An entity with `MRX_StashPointComponent` (access distance, default 5 m), an enab
 `MRX_OpenStashAction` (`Marx_Stash`) in its `ActionsManagerComponent`. `Marx_Stash: Prefabs/Marx/Stash/MRX_StashWardrobe.et`
 is a ready example.
 
-Clients call `SCR_PlayerController.MRX_RequestStashList`, `MRX_RequestStashDeposit` and `MRX_RequestStashWithdraw`
-(the server checks the distance) and get `MRX_GetOnStashList()` and `MRX_GetOnStashResult()`. `MRX_StashMenu` is the
-default dialog.
+### Stash in the vanilla inventory (Marx_Stash)
+
+Using the "Stash" action opens the player's stash like a large bag in the vanilla inventory:
+
+1. The server spawns a personal container (`Prefabs/Marx/Stash/MRX_StashContainer.et`, no model) at the stash point and
+   restores the player's `STASHED` assets into it. Their records stay `STASHED` while they lie in the container.
+2. The client opens the vanilla inventory on that container. Items are moved by drag and drop as usual.
+3. Every move is committed right away (one frame later, so intermediate moves do not count):
+   - an item moved out of the container: `TakeWorldItem` (`DEPLOYED`, bound to the item)
+   - an item moved in: `StoreWorldItem` (a bound asset of the player goes back to `STASHED`, any other item becomes a
+     new asset)
+   - changed contents of a stashed bag or weapon inside the container: its snapshot is updated
+   - a refused move (stash full, validator, ...) is undone and shown as a hint
+4. Closing the inventory, walking away from the stash point, dying or leaving closes the stash: the container and the
+   items still inside are removed (they stay `STASHED`).
+
+Only the player who opened the container may take items out (`MRX_StashContainerManagerComponent`). The container
+holds up to 200000 cm3 and items up to 300 cm per side (`MaxCumulativeVolume`, `MaxItemSize` with
+`UseCapacityCoefficient` off, because the container has no model); the asset limit of the settings applies as well.
+
+Server side, `MRX_StashSessions.Get()` returns the open containers (`MRX_StashSessionManager`).
+
+### Other front-ends
+
+Core also offers request RPCs for custom UIs: `SCR_PlayerController.MRX_RequestStashList`, `MRX_RequestStashDeposit`
+and `MRX_RequestStashWithdraw` (the server checks the distance), answered through `MRX_GetOnStashList()` and
+`MRX_GetOnStashResult()`. Front-ends that keep stashed items in the world can use the service calls
+`StoreWorldItem`, `TakeWorldItem`, `UpdateStashedSnapshot` and `RemoveVanished`.

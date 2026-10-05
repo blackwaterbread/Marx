@@ -52,12 +52,6 @@ class MRX_EntityAssetWorld : MRX_AssetWorld
 	//------------------------------------------------------------------------------------------------
 	override void Deliver(int playerId, ResourceName prefab, MRX_ItemSnapshot snapshot, notnull MRX_AssetSpawnCallback callback)
 	{
-		for (int i = m_aSpawns.Count() - 1; i >= 0; i--)
-		{
-			if (m_aSpawns[i].IsDone())
-				m_aSpawns.Remove(i);
-		}
-
 		InventoryStorageManagerComponent manager = GetStorageManager(playerId);
 		BaseInventoryStorageComponent storage;
 		if (manager)
@@ -67,6 +61,20 @@ class MRX_EntityAssetWorld : MRX_AssetWorld
 		{
 			callback.OnSpawned(null);
 			return;
+		}
+
+		SpawnIntoStorage(manager, storage, prefab, snapshot, callback);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Spawns the prefab into the storage and restores the snapshot on it (null keeps the prefab defaults).
+	//! Calls callback.OnSpawned once, with the item or null on failure.
+	void SpawnIntoStorage(notnull InventoryStorageManagerComponent manager, notnull BaseInventoryStorageComponent storage, ResourceName prefab, MRX_ItemSnapshot snapshot, notnull MRX_AssetSpawnCallback callback)
+	{
+		for (int i = m_aSpawns.Count() - 1; i >= 0; i--)
+		{
+			if (m_aSpawns[i].IsDone())
+				m_aSpawns.Remove(i);
 		}
 
 		MRX_AssetSpawnOperation operation = new MRX_AssetSpawnOperation(manager, prefab, snapshot, callback);

@@ -214,38 +214,12 @@ class MRX_SampleAssetsPlugin : WorldEditorPlugin
 
 		Log("MRX_StashContainerManagerComponent", api.CreateComponent(source, "MRX_StashContainerManagerComponent") != null);
 
-		// Property names, to pick the capacity settings.
-		if (storage)
-		{
-			DumpVars("storage", storage);
-			BaseContainer attributes = storage.GetObject("Attributes");
-			if (attributes)
-			{
-				DumpVars("attributes", attributes);
-				BaseContainer physical = attributes.GetObject("ItemPhysAttributes");
-				if (physical)
-					DumpVars("physical", physical);
-			}
-		}
-
 		Log("CreateEntityTemplate", api.CreateEntityTemplate(source, absPath));
 		api.DeleteEntity(source);
 		if (manageAction)
 			api.EndEntityAction();
 
 		Print(TAG + "saved " + GetResourceName(absPath));
-	}
-
-	//------------------------------------------------------------------------------------------------
-	protected void DumpVars(string label, notnull BaseContainer container)
-	{
-		string names;
-		for (int i = 0, count = container.GetNumVars(); i < count; i++)
-		{
-			names += container.GetVarName(i) + " ";
-		}
-
-		Print(TAG + label + " vars: " + names);
 	}
 
 	//------------------------------------------------------------------------------------------------

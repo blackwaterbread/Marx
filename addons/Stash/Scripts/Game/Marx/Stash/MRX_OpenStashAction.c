@@ -1,5 +1,5 @@
-//! "Stash" interaction (API v0): opens the stash UI on the client of the player who uses it.
-//! Add it to the ActionsManagerComponent of an entity that has MRX_StashPointComponent.
+//! "Stash" interaction (API v0): asks the server to open the player's stash, which then shows in the vanilla inventory.
+//! Add it to the ActionsManagerComponent of an entity that has MRX_StashPointComponent and an enabled RplComponent.
 class MRX_OpenStashAction : ScriptedUserAction
 {
 	//------------------------------------------------------------------------------------------------
@@ -8,9 +8,9 @@ class MRX_OpenStashAction : ScriptedUserAction
 		if (pUserEntity != SCR_PlayerController.GetLocalControlledEntity())
 			return;
 
-		MRX_StashPointComponent stashPoint = MRX_StashPointComponent.Cast(pOwnerEntity.FindComponent(MRX_StashPointComponent));
-		if (stashPoint)
-			MRX_StashMenu.Open(stashPoint);
+		SCR_PlayerController controller = SCR_PlayerController.Cast(GetGame().GetPlayerController());
+		if (controller && pOwnerEntity.FindComponent(MRX_StashPointComponent))
+			controller.MRX_RequestStashOpen(pOwnerEntity);
 	}
 
 	//------------------------------------------------------------------------------------------------

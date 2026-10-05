@@ -94,6 +94,40 @@ class MRX_StashService : Managed
 		Enqueue(ownerId, op);
 	}
 
+	// Stash front-ends that show stashed items in the world (e.g. an open stash container) use the following four calls.
+	// The item stays where it is; Marx only changes the record and the binding.
+
+	//------------------------------------------------------------------------------------------------
+	//! Stores an item of the world: a deployed asset of the owner bound to it goes back to STASHED, an unbound item
+	//! becomes a new STASHED asset. The result carries the asset.
+	void StoreWorldItem(string ownerId, Managed item, MRX_StashResultCallback callback = null)
+	{
+		Enqueue(ownerId, new MRX_StashStoreWorldOp(this, ownerId, item, callback));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! A STASHED asset shown in the world was taken: it becomes DEPLOYED and bound to the item.
+	void TakeWorldItem(string ownerId, string assetId, Managed item, MRX_StashResultCallback callback = null)
+	{
+		Enqueue(ownerId, new MRX_StashTakeWorldOp(this, ownerId, assetId, item, callback));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Replaces the snapshot of a STASHED asset (e.g. its contents changed while shown in the world).
+	void UpdateStashedSnapshot(string ownerId, string assetId, notnull MRX_ItemSnapshot snapshot, MRX_StashResultCallback callback = null)
+	{
+		MRX_AssetChange change = MRX_AssetChange.Update(assetId, MRX_EAssetState.STASHED, MRX_EAssetState.STASHED, snapshot);
+		Enqueue(ownerId, new MRX_StashChangeOp(this, ownerId, change, CreateServiceContext("update"), callback));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! A STASHED asset shown in the world lost its item (e.g. it was used up there): the record is removed.
+	void RemoveVanished(string ownerId, string assetId, MRX_StashResultCallback callback = null)
+	{
+		MRX_AssetChange change = MRX_AssetChange.Remove(assetId, MRX_EAssetState.STASHED);
+		Enqueue(ownerId, new MRX_StashChangeOp(this, ownerId, change, CreateServiceContext("vanished"), callback));
+	}
+
 	//------------------------------------------------------------------------------------------------
 	void SetLossPolicy(notnull MRX_LossPolicy policy)
 	{
@@ -342,6 +376,20 @@ class MRX_StashService : Managed
 		MRX_AssetChange change = MRX_AssetChange.Update(assetId, MRX_EAssetState.DEPLOYED, newState);
 		MRX_TxContext context = MRX_TxContext.Create(LEDGER_SOURCE, action, string.Format("%1:%2:%3", action, assetId, m_sSessionId));
 		Enqueue(ownerId, new MRX_StashChangeOp(this, ownerId, change, context, null));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! A context of this service for a one-off change.
+	protected static MRX_TxContext CreateServiceContext(string action)
+	{
+		return MRX_TxContext.Create(LEDGER_SOURCE, action, action + ":" + CreateId());
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Internal, used by MRX_StashOp: player ID of a connected owner, 0 when offline.
+	int GetPlayerIdOf(string ownerId)
+	{
+		return m_Identity.GetPlayerId(ownerId);
 	}
 
 	//------------------------------------------------------------------------------------------------

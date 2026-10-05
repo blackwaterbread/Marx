@@ -608,3 +608,174 @@ class MRX_StashRecoverOp : MRX_StashOp
 	}
 
 }
+
+//------------------------------------------------------------------------------------------------
+//! StoreWorldItem: the item stays in the world; only the record and the binding change.
+class MRX_StashStoreWorldOp : MRX_StashOp
+{
+	//! Weak: an engine entity.
+	protected Managed m_Item;
+	protected ref MRX_ItemSnapshot m_Snapshot;
+	protected MRX_AssetBinding m_Binding;
+
+	//------------------------------------------------------------------------------------------------
+	void MRX_StashStoreWorldOp(MRX_StashService service, string ownerId, Managed item, MRX_StashResultCallback callback)
+	{
+		Init(service, ownerId, callback);
+		m_Item = item;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void Start()
+	{
+		m_Binding = m_Service.GetBindings().FindByItem(m_Item);
+		if (m_Binding && m_Binding.m_sOwnerId != m_sOwnerId)
+		{
+			Fail(MRX_EStashStatus.NOT_OWNED);
+			return;
+		}
+
+		if (!m_Service.GetWorld().IsAlive(m_Item))
+		{
+			Fail(MRX_EStashStatus.NOT_IN_INVENTORY);
+			return;
+		}
+
+		LoadStash();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void OnStashLoaded(MRX_EStashStatus status, MRX_StashRecord record)
+	{
+		if (status != MRX_EStashStatus.OK || !record)
+		{
+			Fail(MRX_EStashStatus.STORAGE_ERROR);
+			return;
+		}
+
+		if (m_Binding)
+		{
+			MRX_AssetRecord asset = record.FindAsset(m_Binding.m_sAssetId);
+			if (!asset || asset.m_eState != MRX_EAssetState.DEPLOYED)
+			{
+				Fail(MRX_EStashStatus.INVALID_STATE);
+				return;
+			}
+
+			m_eOldState = MRX_EAssetState.DEPLOYED;
+		}
+		else
+		{
+			int maxAssets = m_Service.GetRules().m_iMaxStashAssets;
+			if (maxAssets > 0 && record.m_aAssets.Count() >= maxAssets)
+			{
+				Fail(MRX_EStashStatus.STASH_FULL);
+				return;
+			}
+
+			m_bCreatesAsset = true;
+		}
+
+		m_Snapshot = m_Service.GetWorld().Capture(m_Item);
+		if (!m_Snapshot)
+		{
+			Fail(MRX_EStashStatus.CAPTURE_FAILED);
+			return;
+		}
+
+		if (!m_Service.IsDepositAllowed(m_Service.GetPlayerIdOf(m_sOwnerId), m_sOwnerId, m_Snapshot))
+		{
+			Fail(MRX_EStashStatus.REJECTED);
+			return;
+		}
+
+		MRX_StashRequest request = m_Service.CreateRequest(m_sOwnerId, null, "store");
+		if (m_Binding)
+			request.m_aChanges.Insert(MRX_AssetChange.Update(m_Binding.m_sAssetId, MRX_EAssetState.DEPLOYED, MRX_EAssetState.STASHED, m_Snapshot));
+		else
+			request.m_aChanges.Insert(MRX_AssetChange.Add(MRX_AssetRecord.Create(MRX_StashService.CreateId(), m_Snapshot.m_sPrefab, m_Snapshot)));
+
+		ApplyRequest(request);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void OnApplied(MRX_StashResult result)
+	{
+		if (result.m_eStatus == MRX_EStashStatus.OK && m_Binding)
+			m_Service.GetBindings().Unbind(m_Binding.m_sAssetId);
+
+		Finish(result);
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! TakeWorldItem: a STASHED asset whose item is already in the world becomes DEPLOYED and bound to it.
+class MRX_StashTakeWorldOp : MRX_StashOp
+{
+	protected string m_sAssetId;
+	//! Weak: an engine entity.
+	protected Managed m_Item;
+
+	//------------------------------------------------------------------------------------------------
+	void MRX_StashTakeWorldOp(MRX_StashService service, string ownerId, string assetId, Managed item, MRX_StashResultCallback callback)
+	{
+		Init(service, ownerId, callback);
+		m_sAssetId = assetId;
+		m_Item = item;
+		m_eOldState = MRX_EAssetState.STASHED;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void Start()
+	{
+		if (!m_Service.GetWorld().IsAlive(m_Item))
+		{
+			Fail(MRX_EStashStatus.NOT_IN_INVENTORY);
+			return;
+		}
+
+		LoadStash();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void OnStashLoaded(MRX_EStashStatus status, MRX_StashRecord record)
+	{
+		if (status != MRX_EStashStatus.OK || !record)
+		{
+			Fail(MRX_EStashStatus.STORAGE_ERROR);
+			return;
+		}
+
+		MRX_AssetRecord asset = record.FindAsset(m_sAssetId);
+		if (!asset)
+		{
+			Fail(MRX_EStashStatus.UNKNOWN_ASSET);
+			return;
+		}
+
+		if (asset.m_eState != MRX_EAssetState.STASHED)
+		{
+			Fail(MRX_EStashStatus.INVALID_STATE);
+			return;
+		}
+
+		if (!m_Service.IsWithdrawAllowed(m_Service.GetPlayerIdOf(m_sOwnerId), asset))
+		{
+			Fail(MRX_EStashStatus.REJECTED);
+			return;
+		}
+
+		MRX_StashRequest request = m_Service.CreateRequest(m_sOwnerId, null, "take");
+		request.m_aChanges.Insert(MRX_AssetChange.Update(m_sAssetId, MRX_EAssetState.STASHED, MRX_EAssetState.DEPLOYED, null, m_Service.GetSessionId()));
+		ApplyRequest(request);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void OnApplied(MRX_StashResult result)
+	{
+		if (result.m_eStatus == MRX_EStashStatus.OK)
+			m_Service.GetBindings().Bind(m_sAssetId, m_sOwnerId, m_Item);
+
+		Finish(result);
+	}
+}

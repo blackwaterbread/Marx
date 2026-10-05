@@ -129,7 +129,7 @@ class MRX_TestRunner : Managed
 		MRX_StashTests.Register(s_Instance);
 		MRX_StashEntityTests.Register(s_Instance);
 		MRX_AdminCommandTests.Register(s_Instance);
-		MRX_StashContainerSpike.Register(s_Instance);
+		MRX_StashContainerTests.Register(s_Instance);
 		MRX_NetworkTests.Register(s_Instance);
 		Print(TAG + string.Format("START tests=%1", s_Instance.m_aTests.Count()));
 		s_Instance.RunNext();

@@ -1,19 +1,19 @@
 #ifdef WORKBENCH
-// Spike for the vanilla-inventory stash: can a script-spawned container be opened in the vanilla inventory, do item moves
-// reach the container's storage on the server, and can other characters be kept from taking items out?
+// Tests of the stash container prefab and components: opened in the vanilla inventory, item moves reported on the
+// server, other characters kept from taking items out, room for large items like rifles.
 
 //------------------------------------------------------------------------------------------------
-class MRX_StashContainerSpike
+class MRX_StashContainerTests
 {
 	//------------------------------------------------------------------------------------------------
 	static void Register(notnull MRX_TestRunner runner)
 	{
-		runner.Add(new MRX_Test_StashContainerSpike());
+		runner.Add(new MRX_Test_StashContainer());
 	}
 }
 
 //------------------------------------------------------------------------------------------------
-class MRX_Test_StashContainerSpike : MRX_TestCase
+class MRX_Test_StashContainer : MRX_TestCase
 {
 	static const ResourceName CONTAINER_PREFAB = "{82A52DBC72E19BE8}Prefabs/Marx/Stash/MRX_StashContainer.et";
 	static const ResourceName ITEM_PREFAB = "{A81F501D3EF6F38E}Prefabs/Items/Medicine/FieldDressing_01/FieldDressing_US_01.et";
@@ -64,9 +64,6 @@ class MRX_Test_StashContainerSpike : MRX_TestCase
 			return;
 		}
 
-		Print(string.Format("[MRX_TEST]   container capacity: volume %1, dimensions %2", m_Storage.GetMaxVolumeCapacity(), m_Storage.GetMaxDimensionCapacity()));
-		DumpStorageSource(CONTAINER_PREFAB, "MRX_StashStorageComponent");
-		DumpStorageSource("{06B68C58B72EAAC6}Prefabs/Items/Equipment/Backpacks/Backpack_ALICE_Medium.et", "SCR_UniversalInventoryStorageComponent");
 		containerManager.SetUser(character);
 		MRX_StashStorageComponent.GetOnItemMoved().Insert(OnItemMoved);
 
@@ -80,16 +77,6 @@ class MRX_Test_StashContainerSpike : MRX_TestCase
 	{
 		m_Item = FindCarried(m_Possession.GetCharacter(), ITEM_PREFAB);
 		m_Rifle = FindCarried(m_Possession.GetCharacter(), RIFLE_PREFAB);
-		if (m_Rifle)
-		{
-			InventoryItemComponent rifleItem = InventoryItemComponent.Cast(m_Rifle.FindComponent(InventoryItemComponent));
-			ItemPhysicalAttributes physical;
-			if (rifleItem)
-				physical = ItemPhysicalAttributes.Cast(rifleItem.GetAttributes().FindAttribute(ItemPhysicalAttributes));
-
-			if (physical)
-				Print(string.Format("[MRX_TEST]   rifle volume %1, dimensions %2, container can store %3", physical.GetVolume(), physical.GetDimensions(), m_Storage.PerformVolumeValidation(m_Rifle)));
-		}
 		Check(m_Item != null, "test item in the character inventory");
 		Check(m_Rifle != null, "rifle in the character inventory");
 
@@ -125,8 +112,9 @@ class MRX_Test_StashContainerSpike : MRX_TestCase
 			InventoryStorageManagerComponent otherManager = GetManager(m_Other);
 			BaseInventoryStorageComponent target = otherManager.FindStorageForItem(m_Item);
 			bool canMove = target && otherManager.CanMoveItemToStorage(m_Item, target);
-			bool accepted = target && otherManager.TryMoveItemToStorage(m_Item, target);
-			Print(string.Format("[MRX_TEST]   other character: target %1, can move %2, accepted %3", target, canMove, accepted));
+			Check(!canMove, "another character may not move the item out");
+			if (target)
+				otherManager.TryMoveItemToStorage(m_Item, target);
 		}
 
 		GetGame().GetCallqueue().CallLater(MoveOut, STEP_MS);
@@ -140,9 +128,9 @@ class MRX_Test_StashContainerSpike : MRX_TestCase
 		{
 			InventoryStorageManagerComponent manager = GetManager(m_Possession.GetCharacter());
 			BaseInventoryStorageComponent target = manager.FindStorageForItem(m_Item);
-			bool canMove = target && manager.CanMoveItemToStorage(m_Item, target);
-			bool accepted = target && manager.TryMoveItemToStorage(m_Item, target);
-			Print(string.Format("[MRX_TEST]   user: target %1, can move %2, accepted %3", target, canMove, accepted));
+			Check(target && manager.CanMoveItemToStorage(m_Item, target), "the user may move the item out");
+			if (target)
+				manager.TryMoveItemToStorage(m_Item, target);
 		}
 
 		GetGame().GetCallqueue().CallLater(CheckOut, STEP_MS);
@@ -162,7 +150,6 @@ class MRX_Test_StashContainerSpike : MRX_TestCase
 		if (storage != m_Storage)
 			return;
 
-		Print(string.Format("[MRX_TEST]   container %1 %2 (server %3)", added, SCR_ResourceNameUtils.GetPrefabName(item), Replication.IsServer()));
 		if (added)
 			m_iAdded++;
 		else
@@ -191,48 +178,6 @@ class MRX_Test_StashContainerSpike : MRX_TestCase
 			m_Possession.Release();
 
 		Finish();
-	}
-
-	//------------------------------------------------------------------------------------------------
-	//! Spike only: prints the capacity related settings of a prefab's storage component.
-	protected static void DumpStorageSource(ResourceName prefab, string componentClass)
-	{
-		Resource resource = Resource.Load(prefab);
-		if (!resource || !resource.IsValid())
-			return;
-
-		IEntityComponentSource source = SCR_BaseContainerTools.FindComponentSource(resource, componentClass);
-		if (!source)
-			return;
-
-		float maxVolume;
-		vector maxItemSize;
-		bool useCoefficient;
-		float coefficient;
-		source.Get("MaxCumulativeVolume", maxVolume);
-		source.Get("MaxItemSize", maxItemSize);
-		source.Get("UseCapacityCoefficient", useCoefficient);
-		source.Get("CapacityCoefficient", coefficient);
-		string physicalText;
-		BaseContainer attributes = source.GetObject("Attributes");
-		if (attributes)
-		{
-			BaseContainer physical = attributes.GetObject("ItemPhysAttributes");
-			if (physical)
-			{
-				int strategy;
-				vector dimensions;
-				float volume;
-				float scaler;
-				physical.Get("SizeSetupStrategy", strategy);
-				physical.Get("ItemDimensions", dimensions);
-				physical.Get("ItemVolume", volume);
-				physical.Get("DimensionScaler", scaler);
-				physicalText = string.Format("strategy %1, dimensions %2, volume %3, scaler %4", strategy, dimensions, volume, scaler);
-			}
-		}
-
-		Print(string.Format("[MRX_TEST]   %1: MaxCumulativeVolume %2, MaxItemSize %3, UseCapacityCoefficient %4, CapacityCoefficient %5, physical {%6}", FilePath.StripPath(prefab), maxVolume, maxItemSize, useCoefficient, coefficient, physicalText));
 	}
 
 	//------------------------------------------------------------------------------------------------

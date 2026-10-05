@@ -1,5 +1,5 @@
-// Personal stash container (work in progress): a hidden entity that holds a player's stashed items while the stash is open,
-// shown through the vanilla inventory. These components report item moves and keep other characters out.
+// Personal stash container: an entity without model that holds a player's stashed items while the stash is open, shown
+// through the vanilla inventory (see MRX_StashSession). These components report item moves and keep other characters out.
 
 void MRX_StashContainerMoveDelegate(MRX_StashStorageComponent storage, IEntity item, bool added);
 typedef func MRX_StashContainerMoveDelegate;
@@ -66,8 +66,7 @@ class MRX_StashContainerManagerComponent : ScriptedInventoryStorageManagerCompon
 	//------------------------------------------------------------------------------------------------
 	override protected bool ShouldForbidRemoveByInstigator(InventoryStorageManagerComponent instigatorManager, BaseInventoryStorageComponent fromStorage, IEntity item)
 	{
-		bool forbid = !instigatorManager || instigatorManager.GetOwner() != m_User;
-		Print(string.Format("[MRX_STASH] remove check: instigator %1, user %2, forbid %3", instigatorManager, m_User, forbid));
-		return forbid;
+		// Without a user (closing) nobody may take items out.
+		return !m_User || !instigatorManager || instigatorManager.GetOwner() != m_User;
 	}
 }

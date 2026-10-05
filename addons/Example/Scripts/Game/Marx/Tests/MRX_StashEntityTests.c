@@ -204,37 +204,42 @@ class MRX_Test_StashEntityRoundTrip : MRX_TestCase
 }
 
 //------------------------------------------------------------------------------------------------
-//! The stash wardrobe prefab with the player controller RPCs: open and close the menu, list, withdraw and deposit.
+//! The stash wardrobe with the vanilla-inventory container: open, take a stashed item out, put it back, store a new
+//! item, close, reopen and find both, then clean up. Item moves use the inventory manager like the vanilla UI does.
 class MRX_Test_StashPointFlow : MRX_TestCase
 {
 	static const ResourceName STASH_PREFAB = "{66BACE8BD545B8C2}Prefabs/Marx/Stash/MRX_StashWardrobe.et";
 	static const ResourceName ITEM_PREFAB = "{A81F501D3EF6F38E}Prefabs/Items/Medicine/FieldDressing_01/FieldDressing_US_01.et";
-	//! Longer than the controller's request interval.
-	protected static const int REQUEST_GAP_MS = 400;
+	static const ResourceName NEW_ITEM_PREFAB = "{61D4F80E49BF9B12}Prefabs/Items/Equipment/Compass/Compass_SY183.et";
+	protected static const int STEP_MS = 700;
+	protected static const int WAIT_LIMIT_MS = 6000;
 
 	protected ref MRX_TestPossession m_Possession;
 	protected SCR_PlayerController m_Controller;
 	protected IEntity m_StashPoint;
 	protected string m_sOwnerId;
 	protected string m_sAssetId;
-	protected int m_iStep;
-	//! The menu sends its own list request; only the answer to ours counts.
-	protected bool m_bAwaitingList;
+	protected IEntity m_Item;
+	protected IEntity m_NewItem;
+	protected int m_iWaitedMs;
+	protected bool m_bReopened;
 	protected ref MRX_StashResultCallback m_ServiceCallback;
+	protected ref MRX_StashCallback m_ListCallback;
+	protected ref array<string> m_aCleanupIds = {};
 
 	//------------------------------------------------------------------------------------------------
 	override int GetTimeoutMs()
 	{
-		return 20000;
+		return 30000;
 	}
 
 	//------------------------------------------------------------------------------------------------
 	override protected void Run()
 	{
 		m_Possession = MRX_TestPossession.Acquire();
-		if (!m_Possession || !m_Possession.GetCharacter() || !MRX_Marx.GetStash())
+		if (!m_Possession || !m_Possession.GetCharacter() || !MRX_Marx.GetStash() || !MRX_StashSessions.Get())
 		{
-			Skip("no stash service or no local character");
+			Skip("no stash service, no stash sessions or no local character");
 			return;
 		}
 
@@ -247,25 +252,12 @@ class MRX_Test_StashPointFlow : MRX_TestCase
 		}
 
 		m_StashPoint = MRX_TestWorldUtils.SpawnPrefab(STASH_PREFAB, m_Possession.GetCharacter().GetOrigin() + "1 0 0");
-		MRX_StashPointComponent stashPoint;
-		if (m_StashPoint)
-			stashPoint = MRX_StashPointComponent.Cast(m_StashPoint.FindComponent(MRX_StashPointComponent));
-
-		Check(stashPoint != null, "stash prefab has MRX_StashPointComponent");
-		if (!stashPoint)
+		if (!m_StashPoint)
 		{
+			Check(false, "stash prefab spawns");
 			End(false, string.Empty);
 			return;
 		}
-
-		Check(SCR_EntityHelper.EntityToRplId(m_StashPoint) != RplId.Invalid(), "stash point is replicated");
-		MRX_StashMenu menu = MRX_StashMenu.Open(stashPoint);
-		Check(menu != null, "stash menu opens");
-		if (menu)
-			menu.Close();
-
-		m_Controller.MRX_GetOnStashList().Insert(OnStashList);
-		m_Controller.MRX_GetOnStashResult().Insert(OnStashResult);
 
 		m_ServiceCallback = new MRX_StashResultCallback();
 		m_ServiceCallback.GetOnResult().Insert(OnGranted);
@@ -283,109 +275,213 @@ class MRX_Test_StashPointFlow : MRX_TestCase
 		}
 
 		m_sAssetId = result.GetAsset().m_sId;
-		// The menu above already sent a list request.
-		GetGame().GetCallqueue().CallLater(RequestList, REQUEST_GAP_MS);
+		m_aCleanupIds.Insert(m_sAssetId);
+		Open();
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void RequestList()
+	protected void Open()
 	{
-		m_bAwaitingList = true;
-		m_Controller.MRX_RequestStashList(m_StashPoint);
+		m_iWaitedMs = 0;
+		m_Controller.MRX_RequestStashOpen(m_StashPoint);
+		GetGame().GetCallqueue().CallLater(WaitOpen, STEP_MS);
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void OnStashList(MRX_EStashStatus status, array<string> assetIds, array<string> prefabs, array<int> states)
+	protected void WaitOpen()
 	{
-		if (!m_bAwaitingList)
-			return;
-
-		m_bAwaitingList = false;
-		if (status != MRX_EStashStatus.OK)
+		MRX_StashSession session = GetSession();
+		bool inventoryOpen = GetGame().GetMenuManager().FindMenuByPreset(ChimeraMenuPreset.Inventory20Menu) != null;
+		if (!session || !session.IsReady() || !inventoryOpen)
 		{
-			Check(false, "list failed: " + typename.EnumToString(MRX_EStashStatus, status));
+			m_iWaitedMs += STEP_MS;
+			if (m_iWaitedMs < WAIT_LIMIT_MS)
+			{
+				GetGame().GetCallqueue().CallLater(WaitOpen, STEP_MS);
+				return;
+			}
+
+			Check(false, string.Format("stash opens (session %1, inventory %2)", session != null, inventoryOpen));
 			End(false, string.Empty);
 			return;
 		}
 
-		int index = assetIds.Find(m_sAssetId);
-		Check(index >= 0, "granted asset in the list");
-		if (index >= 0)
-			CheckInt(states[index], MRX_EAssetState.STASHED, "listed state");
-
-		GetGame().GetCallqueue().CallLater(RequestWithdraw, REQUEST_GAP_MS);
-	}
-
-	//------------------------------------------------------------------------------------------------
-	protected void RequestWithdraw()
-	{
-		m_Controller.MRX_RequestStashWithdraw(m_StashPoint, m_sAssetId);
-	}
-
-	//------------------------------------------------------------------------------------------------
-	protected void OnStashResult(MRX_EStashStatus status, string assetId)
-	{
-		m_iStep++;
-		string step = "withdraw";
-		if (m_iStep > 1)
-			step = "deposit";
-
-		if (status != MRX_EStashStatus.OK)
+		if (m_bReopened)
 		{
-			Check(false, step + " failed: " + typename.EnumToString(MRX_EStashStatus, status));
+			Check(FindInContainer(ITEM_PREFAB) != null, "stored item shown again after reopening");
+			Check(FindInContainer(NEW_ITEM_PREFAB) != null, "new item shown again after reopening");
+			Close();
+			GetGame().GetCallqueue().CallLater(CheckClosedForCleanup, STEP_MS * 2);
+			return;
+		}
+
+		m_Item = FindInContainer(ITEM_PREFAB);
+		Check(m_Item != null, "granted item shown in the container");
+		if (!m_Item)
+		{
 			End(false, string.Empty);
 			return;
 		}
 
-		CheckString(assetId, m_sAssetId, step + " reports the asset");
-		if (m_iStep == 1)
-		{
-			GetGame().GetCallqueue().CallLater(RequestDeposit, REQUEST_GAP_MS);
-			return;
-		}
-
-		m_ServiceCallback = new MRX_StashResultCallback();
-		m_ServiceCallback.GetOnResult().Insert(OnRemoved);
-		MRX_Marx.GetStash().Remove(m_sOwnerId, m_sAssetId, MRX_TxContext.Create("test", "stash point cleanup", MRX_NetworkTests.UniqueKey("stash-point")), m_ServiceCallback);
+		MoveToCharacter(m_Item);
+		GetGame().GetCallqueue().CallLater(CheckTaken, STEP_MS);
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void RequestDeposit()
+	protected void CheckTaken()
 	{
-		IEntity item;
+		CheckString(MRX_Marx.GetStash().GetAssetId(m_Item), m_sAssetId, "item taken out is bound to its asset (DEPLOYED)");
+		InventoryStorageManagerComponent manager = GetCharacterManager();
+		manager.TryMoveItemToStorage(m_Item, GetSession().GetStorage());
+		GetGame().GetCallqueue().CallLater(CheckPutBack, STEP_MS);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void CheckPutBack()
+	{
+		CheckString(MRX_Marx.GetStash().GetAssetId(m_Item), string.Empty, "item put back is unbound (STASHED)");
+		GetCharacterManager().TrySpawnPrefabToStorage(NEW_ITEM_PREFAB);
+		GetGame().GetCallqueue().CallLater(PutNewItem, STEP_MS);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void PutNewItem()
+	{
 		array<IEntity> items = {};
 		m_Possession.GetItems(items);
-		foreach (IEntity candidate : items)
+		foreach (IEntity item : items)
 		{
-			if (MRX_Marx.GetStash().GetAssetId(candidate) == m_sAssetId)
-				item = candidate;
+			if (SCR_ResourceNameUtils.GetPrefabName(item) == NEW_ITEM_PREFAB)
+				m_NewItem = item;
 		}
 
-		Check(item != null, "withdrawn item in the inventory");
-		if (!item)
-		{
-			End(false, string.Empty);
-			return;
-		}
+		Check(m_NewItem != null, "new item in the character inventory");
+		if (m_NewItem)
+			GetCharacterManager().TryMoveItemToStorage(m_NewItem, GetSession().GetStorage());
 
-		m_Controller.MRX_RequestStashDeposit(m_StashPoint, item);
+		GetGame().GetCallqueue().CallLater(ListAfterStore, STEP_MS);
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void OnRemoved(MRX_StashResult result)
+	protected void ListAfterStore()
+	{
+		m_ListCallback = new MRX_StashCallback();
+		m_ListCallback.GetOnResult().Insert(OnListedAfterStore);
+		MRX_Marx.GetStash().List(m_sOwnerId, m_ListCallback);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnListedAfterStore(MRX_EStashStatus status, MRX_StashRecord record)
+	{
+		Check(record != null, "stash listed");
+		if (record)
+		{
+			MRX_AssetRecord granted = record.FindAsset(m_sAssetId);
+			Check(granted && granted.m_eState == MRX_EAssetState.STASHED, "granted asset STASHED after put back");
+			foreach (MRX_AssetRecord asset : record.m_aAssets)
+			{
+				if (asset.m_sPrefab == NEW_ITEM_PREFAB && asset.m_eState == MRX_EAssetState.STASHED && !m_aCleanupIds.Contains(asset.m_sId))
+					m_aCleanupIds.Insert(asset.m_sId);
+			}
+
+			CheckInt(m_aCleanupIds.Count(), 2, "new item stored as a new asset");
+		}
+
+		Close();
+		m_iWaitedMs = 0;
+		GetGame().GetCallqueue().CallLater(CheckClosed, STEP_MS);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void CheckClosed()
+	{
+		m_iWaitedMs += STEP_MS;
+		if (GetSession() && m_iWaitedMs < WAIT_LIMIT_MS)
+		{
+			GetGame().GetCallqueue().CallLater(CheckClosed, STEP_MS);
+			return;
+		}
+
+		Print(string.Format("[MRX_TEST]   session closed after %1 ms", m_iWaitedMs));
+		Check(GetSession() == null, "session closed after the inventory closed");
+		Check(!m_Item || m_Item.IsDeleted(), "container contents removed with the container");
+		m_bReopened = true;
+		Open();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void CheckClosedForCleanup()
+	{
+		Check(GetSession() == null, "session closed again");
+		m_ServiceCallback = new MRX_StashResultCallback();
+		m_ServiceCallback.GetOnResult().Insert(OnCleanedUp);
+		foreach (string assetId : m_aCleanupIds)
+		{
+			MRX_Marx.GetStash().Remove(m_sOwnerId, assetId, MRX_TxContext.Create("test", "stash point cleanup", MRX_NetworkTests.UniqueKey("stash-point")), m_ServiceCallback);
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnCleanedUp(MRX_StashResult result)
 	{
 		CheckInt(result.m_eStatus, MRX_EStashStatus.OK, "cleanup remove");
-		End(false, string.Empty);
+		m_aCleanupIds.RemoveOrdered(0);
+		if (m_aCleanupIds.IsEmpty())
+			End(false, string.Empty);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Like closing the inventory window: the client asks the server to close the stash.
+	protected void Close()
+	{
+		GetGame().GetMenuManager().CloseMenuByPreset(ChimeraMenuPreset.Inventory20Menu);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void MoveToCharacter(IEntity item)
+	{
+		InventoryStorageManagerComponent manager = GetCharacterManager();
+		BaseInventoryStorageComponent target = manager.FindStorageForItem(item);
+		Check(target && manager.TryMoveItemToStorage(item, target), "move out of the container accepted");
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected IEntity FindInContainer(ResourceName prefab)
+	{
+		MRX_StashSession session = GetSession();
+		if (!session || !session.GetStorage())
+			return null;
+
+		array<IEntity> items = {};
+		session.GetStorage().GetAll(items);
+		foreach (IEntity item : items)
+		{
+			if (SCR_ResourceNameUtils.GetPrefabName(item) == prefab)
+				return item;
+		}
+
+		return null;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected MRX_StashSession GetSession()
+	{
+		return MRX_StashSessions.Get().Find(m_Controller.GetPlayerId());
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected InventoryStorageManagerComponent GetCharacterManager()
+	{
+		ChimeraCharacter character = ChimeraCharacter.Cast(m_Possession.GetCharacter());
+		return character.GetCharacterController().GetInventoryStorageManager();
 	}
 
 	//------------------------------------------------------------------------------------------------
 	protected void End(bool skip, string reason)
 	{
-		if (m_Controller)
-		{
-			m_Controller.MRX_GetOnStashList().Remove(OnStashList);
-			m_Controller.MRX_GetOnStashResult().Remove(OnStashResult);
-		}
+		Close();
+		if (m_NewItem && !m_NewItem.IsDeleted())
+			SCR_EntityHelper.DeleteEntityAndChildren(m_NewItem);
 
 		if (m_StashPoint)
 			SCR_EntityHelper.DeleteEntityAndChildren(m_StashPoint);
