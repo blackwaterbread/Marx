@@ -80,7 +80,21 @@ class MRX_Test_ShopEntityFlow : MRX_TestCase
 		MRX_ShopMenu menu = MRX_ShopMenu.Open(shop);
 		Check(menu != null, "shop menu opens");
 		if (menu)
+		{
+			CheckInt(menu.GetRowCount(), SAMPLE_ITEM_COUNT, "shop window lists every item");
+			int medical;
+			foreach (MRX_ShopItem sampleItem : definition.m_Catalog.m_aItems)
+			{
+				if (sampleItem.m_sCategory == "Medical")
+					medical++;
+			}
+
+			// The first category of the sample catalog.
+			menu.ShowCategory(1);
+			CheckInt(menu.GetRowCount(), medical, "category filter shows its items");
+			menu.ShowTab(true);
 			menu.Close();
+		}
 
 		m_Controller.MRX_GetOnShopResult().Insert(OnShopResult);
 

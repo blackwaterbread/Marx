@@ -9,6 +9,9 @@ class MRX_ShopComponent : ScriptComponent
 	[Attribute(desc: "Stable shop ID, written to the ledger")]
 	protected string m_sShopId;
 
+	[Attribute(desc: "Name shown in the shop window. Empty: \"Shop\".")]
+	protected LocalizedString m_sDisplayName;
+
 	[Attribute(params: "conf class=MRX_ShopCatalog", desc: "Items this shop sells and buys back")]
 	protected ResourceName m_sCatalog;
 
@@ -45,6 +48,15 @@ class MRX_ShopComponent : ScriptComponent
 		catalog.Validate(currencies, m_sCatalog);
 		m_Definition = MRX_ShopDefinition.Create(GetShopId(), catalog, m_iSellPercent, m_bAllowSell);
 		return m_Definition;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	string GetDisplayName()
+	{
+		if (!m_sDisplayName.IsEmpty())
+			return m_sDisplayName;
+
+		return "Shop";
 	}
 
 	//------------------------------------------------------------------------------------------------

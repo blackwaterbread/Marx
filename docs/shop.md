@@ -54,7 +54,12 @@ the answer from `MRX_GetOnShopResult()`.
 
 ## Default UI
 
-- `MRX_ShopMenu`: balance, buy rows, sell rows for sellable carried items. Built on `MRX_ScriptedDialog` (`Marx_UI`):
-  rows of text and buttons created in script inside the vanilla configurable dialog, so no layout asset is needed.
+- `MRX_ShopMenu`: a shop window titled with the shop's display name (`m_sDisplayName` on `MRX_ShopComponent`). It
+  shows the balance and the outcome of the last trade, a Buy tab with a category filter (the catalog items'
+  `m_sCategory`) and a Sell tab with the sellable items the player carries. Every item has a 3D preview, its name (the
+  catalog name, or the item's own inventory name), its price and a button; prices the player cannot pay are red and
+  their button is disabled. One item per trade.
+- Built on `MRX_ScriptedDialog` (`Marx_UI`) from vanilla parts in script (the wide configurable dialog, widget
+  library buttons and toolbox, the dialog scroll area, inventory item slots), so no Marx layout asset is needed.
 - `MRX_WalletHud` (`Marx_UI`): balances in the top right corner of the HUD with a short change hint. Mods with their
   own HUD call `MRX_WalletHud.SetEnabled(false)` and use `MRX_ClientWallet` instead.
