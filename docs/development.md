@@ -34,6 +34,9 @@ Command line switches (passed by the launch script):
 
 Typical loop: open `worlds/GameMaster/GM_Arland.ent`, press Play, read the `[MRX_TEST]` lines in the log.
 
+For trying the stash by hand, `#marxkit` in the chat (Workbench only, administrators) puts three different backpacks
+and a few small items into your stash; reopen an open stash to see them.
+
 ## Workbench plugins (Plugins > Marx)
 
 - **Create Marx Reference Configs**: creates the reference persistence and systems configs in `Marx_Core`, and adds

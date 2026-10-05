@@ -94,9 +94,12 @@ Using the "Stash" action opens the vanilla inventory with the player's stash as 
    - an item moved in: `StoreWorldItem` (a bound asset of the player goes back to `STASHED`, any other item becomes a
      new asset)
    - changed contents of a stashed bag or weapon inside the container: its snapshot is updated
-   - an item of the player's assets that went into a bag in the container (a stashed one moved into it, or a deployed
-     one put into it): merged into the bag (`MergeIntoStashed`, one request: the bag's snapshot holds it, its own
-     asset is removed)
+   - items moving into or out of a bag in the container, together with the bags' snapshots, in one request
+     (`ApplyWorldChanges` with `MRX_StashWorldChanges`), so nothing is kept twice or lost in between:
+     - an item of the player's assets that went into the bag (a stashed one moved into it, or a deployed one put into
+       it) is merged: the bag's snapshot holds it, its own asset is removed
+     - an item that came out of the bag becomes an asset again: `STASHED` when it lies in the container, `DEPLOYED`
+       (bound to it) when it left the stash
    - a refused move (stash full, validator, ...) is undone and shown as a hint
 4. Closing the inventory, walking away from the stash point, dying or leaving closes the stash: the container and the
    items still inside are removed (they stay `STASHED`).

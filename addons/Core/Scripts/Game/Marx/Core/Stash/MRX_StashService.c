@@ -130,12 +130,12 @@ class MRX_StashService : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Items of other assets went into the item of a STASHED asset shown in the world (e.g. into a bag in an open stash
-	//! container): in one request the asset takes the snapshot that holds them and their assets are removed, so nothing
-	//! is kept twice. Merged assets may be STASHED (shown in the world) or DEPLOYED (bound to the item that went in).
-	void MergeIntoStashed(string ownerId, string assetId, notnull MRX_ItemSnapshot snapshot, notnull array<string> mergedAssetIds, MRX_StashResultCallback callback = null)
+	//! Applies changes of STASHED assets shown in the world whose items exchanged items (e.g. items put into or taken out
+	//! of a bag in an open stash container) as one request: new snapshots, assets merged into another item, assets for
+	//! items that came out. See MRX_StashWorldChanges. The result carries the changed and new assets.
+	void ApplyWorldChanges(string ownerId, notnull MRX_StashWorldChanges changes, MRX_StashResultCallback callback = null)
 	{
-		Enqueue(ownerId, new MRX_StashMergeOp(this, ownerId, assetId, snapshot, mergedAssetIds, CreateServiceContext("merge"), callback));
+		Enqueue(ownerId, new MRX_StashWorldChangesOp(this, ownerId, changes, CreateServiceContext("world"), callback));
 	}
 
 	//------------------------------------------------------------------------------------------------

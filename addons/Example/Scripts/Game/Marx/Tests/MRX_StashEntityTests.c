@@ -805,6 +805,7 @@ class MRX_Test_StashPlacementFlow : MRX_TestCase
 //------------------------------------------------------------------------------------------------
 //! Items going into a bag in the open stash become part of the bag: a stashed dressing moved into it and a deployed
 //! compass put into it lose their own assets, the bag's snapshot holds them, and they are in the bag after reopening.
+//! Items coming out become assets again: the dressing moved to the stash is STASHED, the compass taken is DEPLOYED.
 class MRX_Test_StashBagMerge : MRX_TestCase
 {
 	static const ResourceName STASH_PREFAB = "{66BACE8BD545B8C2}Prefabs/Marx/Stash/MRX_StashWardrobe.et";
@@ -822,15 +823,17 @@ class MRX_Test_StashBagMerge : MRX_TestCase
 	protected string m_sDressingId;
 	protected string m_sCompassId;
 	protected IEntity m_Compass;
+	protected IEntity m_Dressing;
 	protected int m_iWaitedMs;
 	protected bool m_bReopened;
 	protected ref MRX_StashResultCallback m_ServiceCallback;
 	protected ref MRX_StashCallback m_ListCallback;
+	protected ref array<string> m_aCleanupIds = {};
 
 	//------------------------------------------------------------------------------------------------
 	override int GetTimeoutMs()
 	{
-		return 40000;
+		return 45000;
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -916,9 +919,21 @@ class MRX_Test_StashBagMerge : MRX_TestCase
 		IEntity bag = session.FindShownItem(m_sBagId);
 		if (m_bReopened)
 		{
-			Check(bag && HasItemInside(bag, DRESSING_PREFAB) && HasItemInside(bag, COMPASS_PREFAB), "bag holds both items after reopening");
-			Close();
-			GetGame().GetCallqueue().CallLater(CleanUp, STEP_MS * 2);
+			m_Dressing = FindInside(bag, DRESSING_PREFAB);
+			m_Compass = FindInside(bag, COMPASS_PREFAB);
+			Check(m_Dressing && m_Compass, "bag holds both items after reopening");
+			if (!m_Dressing || !m_Compass)
+			{
+				Close();
+				GetGame().GetCallqueue().CallLater(CleanUp, STEP_MS * 2);
+				return;
+			}
+
+			// Out of the bag: the dressing into the stash, the compass into the character inventory.
+			Check(GetCharacterManager().TryMoveItemToStorage(m_Dressing, session.GetStorage()), "dressing moved out of the bag into the stash");
+			BaseInventoryStorageComponent target = GetCharacterManager().FindStorageForItem(m_Compass);
+			Check(target && GetCharacterManager().TryMoveItemToStorage(m_Compass, target), "compass taken out of the bag");
+			GetGame().GetCallqueue().CallLater(ListSplit, STEP_MS);
 			return;
 		}
 
@@ -1018,18 +1033,65 @@ class MRX_Test_StashBagMerge : MRX_TestCase
 	}
 
 	//------------------------------------------------------------------------------------------------
+	protected void ListSplit()
+	{
+		m_ListCallback = new MRX_StashCallback();
+		m_ListCallback.GetOnResult().Insert(OnListedSplit);
+		MRX_Marx.GetStash().List(m_sOwnerId, m_ListCallback);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnListedSplit(MRX_EStashStatus status, MRX_StashRecord record)
+	{
+		Check(record != null, "stash listed after taking items out");
+		MRX_StashSession session = GetSession();
+		if (record && session)
+		{
+			MRX_AssetRecord bag = record.FindAsset(m_sBagId);
+			Check(bag && !SnapshotHolds(bag.m_Snapshot, DRESSING_PREFAB) && !SnapshotHolds(bag.m_Snapshot, COMPASS_PREFAB), "bag snapshot without the items taken out");
+
+			string dressingId;
+			foreach (MRX_AssetRecord asset : record.m_aAssets)
+			{
+				if (session.FindShownItem(asset.m_sId) == m_Dressing)
+					dressingId = asset.m_sId;
+			}
+
+			Check(!dressingId.IsEmpty() && record.FindAsset(dressingId).m_eState == MRX_EAssetState.STASHED, "dressing out of the bag is a stashed asset");
+			if (!dressingId.IsEmpty())
+				m_aCleanupIds.Insert(dressingId);
+
+			string compassId = MRX_Marx.GetStash().GetAssetId(m_Compass);
+			MRX_AssetRecord compass = record.FindAsset(compassId);
+			Check(compass && compass.m_eState == MRX_EAssetState.DEPLOYED, "compass taken out of the bag is a deployed asset");
+		}
+
+		// The compass is used up: its asset goes, then the entity.
+		MRX_Marx.GetStash().MarkConsumed(m_Compass, CreateContext());
+		SCR_EntityHelper.DeleteEntityAndChildren(m_Compass);
+		Close();
+		GetGame().GetCallqueue().CallLater(CleanUp, STEP_MS * 2);
+	}
+
+	//------------------------------------------------------------------------------------------------
 	protected void CleanUp()
 	{
+		m_aCleanupIds.Insert(m_sBagId);
 		m_ServiceCallback = new MRX_StashResultCallback();
 		m_ServiceCallback.GetOnResult().Insert(OnCleanedUp);
-		MRX_Marx.GetStash().Remove(m_sOwnerId, m_sBagId, CreateContext(), m_ServiceCallback);
+		foreach (string assetId : m_aCleanupIds)
+		{
+			MRX_Marx.GetStash().Remove(m_sOwnerId, assetId, CreateContext(), m_ServiceCallback);
+		}
 	}
 
 	//------------------------------------------------------------------------------------------------
 	protected void OnCleanedUp(MRX_StashResult result)
 	{
 		CheckInt(result.m_eStatus, MRX_EStashStatus.OK, "cleanup remove");
-		End(false, string.Empty);
+		m_aCleanupIds.RemoveOrdered(0);
+		if (m_aCleanupIds.IsEmpty())
+			End(false, string.Empty);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -1048,21 +1110,24 @@ class MRX_Test_StashBagMerge : MRX_TestCase
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected static bool HasItemInside(IEntity bag, ResourceName prefab)
+	protected static IEntity FindInside(IEntity bag, ResourceName prefab)
 	{
-		BaseInventoryStorageComponent storage = GetBagStorage(bag);
+		BaseInventoryStorageComponent storage;
+		if (bag)
+			storage = GetBagStorage(bag);
+
 		if (!storage)
-			return false;
+			return null;
 
 		array<IEntity> items = {};
 		storage.GetAll(items);
 		foreach (IEntity item : items)
 		{
 			if (SCR_ResourceNameUtils.GetPrefabName(item) == prefab)
-				return true;
+				return item;
 		}
 
-		return false;
+		return null;
 	}
 
 	//------------------------------------------------------------------------------------------------

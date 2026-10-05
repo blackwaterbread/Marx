@@ -20,6 +20,8 @@ class MRX_StashSession : Managed
 	protected ref map<string, string> m_mStoredJson = new map<string, string>();
 	//! Asset ID -> stored placement (MRX_AssetRecord.m_sPlacement), to notice moves on the grid.
 	protected ref map<string, string> m_mStoredPlacement = new map<string, string>();
+	//! Asset ID -> items inside its item (e.g. a bag's contents) at the last reconcile, to notice items coming out.
+	protected ref map<string, ref array<IEntity>> m_mNested = new map<string, ref array<IEntity>>();
 	//! New items whose store request runs, so they are not stored twice.
 	protected ref array<IEntity> m_aStoring = {};
 	protected int m_iRestoring;
@@ -285,7 +287,14 @@ class MRX_StashSession : Managed
 
 		array<IEntity> inside = {};
 		GetRootItems(inside);
-		MergeNestedAssets(inside);
+		map<string, ref array<IEntity>> nested = new map<string, ref array<IEntity>>();
+		CollectNested(inside, nested);
+
+		// Items going into or coming out of stashed items (bags) and the snapshots that change with them: one request.
+		MRX_StashWorldChanges changes = new MRX_StashWorldChanges();
+		MRX_StashSessionChangesReply reply = new MRX_StashSessionChangesReply(this, changes);
+		CollectMerges(nested, changes, reply);
+		CollectSplits(inside, nested, changes, reply);
 
 		foreach (IEntity item : inside)
 		{
@@ -312,8 +321,11 @@ class MRX_StashSession : Managed
 				continue;
 
 			m_mStoredJson.Set(assetId, json);
-			GetStash().UpdateStashedSnapshot(m_sOwnerId, assetId, GetStash().GetWorld().Capture(item));
+			changes.UpdateSnapshot(assetId, GetStash().GetWorld().Capture(item));
 		}
+
+		if (!changes.IsEmpty())
+			GetStash().ApplyWorldChanges(m_sOwnerId, changes, reply);
 
 		array<string> leftIds = {};
 		foreach (string shownId, IEntity shownItem : m_mShown)
@@ -334,67 +346,168 @@ class MRX_StashSession : Managed
 				GetStash().RemoveVanished(m_sOwnerId, leftId);
 		}
 
+		m_mNested = nested;
 		if (m_bReady && !m_bClosing)
 			m_Manager.SendPlacements(this);
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Items of the owner's assets that went into a stashed item in the container (e.g. into a bag) belong to that item
-	//! now: its snapshot holds them, so their own assets are merged into it (MergeIntoStashed) instead of counting as
-	//! taken out. Stashed items moved into a bag and deployed items put into one are both covered.
-	protected void MergeNestedAssets(notnull array<IEntity> rootItems)
+	//! Items inside the container's stashed items (at any depth), by the stashed item's asset ID.
+	protected void CollectNested(notnull array<IEntity> rootItems, notnull map<string, ref array<IEntity>> outNested)
 	{
 		array<IEntity> allItems = {};
 		m_ContainerManager.GetItems(allItems);
-		map<string, ref array<string>> merges = new map<string, ref array<string>>();
-		map<string, IEntity> targets = new map<string, IEntity>();
-		foreach (IEntity nested : allItems)
+		foreach (IEntity item : allItems)
 		{
-			if (!nested || rootItems.Contains(nested))
+			if (!item || rootItems.Contains(item))
 				continue;
 
-			IEntity top = nested;
+			IEntity top = item;
 			while (top && top.GetParent() != m_Container)
 			{
 				top = top.GetParent();
 			}
 
-			if (!top)
+			// Inside an item not stored yet: counted once it is.
+			string topId = FindShownAsset(top);
+			if (!top || topId.IsEmpty())
 				continue;
 
-			// A bag not stored yet: merged once it is.
-			string targetId = FindShownAsset(top);
-			if (targetId.IsEmpty())
-				continue;
+			if (!outNested.Contains(topId))
+				outNested.Set(topId, new array<IEntity>());
 
-			string mergedId = FindShownAsset(nested);
-			if (mergedId.IsEmpty() && GetStash().GetOwnerOf(nested) == m_sOwnerId)
-				mergedId = GetStash().GetAssetId(nested);
-
-			if (mergedId.IsEmpty())
-				continue;
-
-			if (!merges.Contains(targetId))
-			{
-				merges.Set(targetId, new array<string>());
-				targets.Set(targetId, top);
-			}
-
-			merges.Get(targetId).Insert(mergedId);
+			outNested.Get(topId).Insert(item);
 		}
+	}
 
-		foreach (string targetAssetId, array<string> mergedIds : merges)
+	//------------------------------------------------------------------------------------------------
+	//! Items of the owner's assets that went into a stashed item belong to it now (its snapshot holds them): their own
+	//! assets are removed with the same request, instead of counting as taken out. Covers stashed items moved into a bag
+	//! and deployed items put into one.
+	protected void CollectMerges(notnull map<string, ref array<IEntity>> nested, notnull MRX_StashWorldChanges changes, notnull MRX_StashSessionChangesReply reply)
+	{
+		foreach (string targetId, array<IEntity> items : nested)
 		{
-			IEntity target = targets.Get(targetAssetId);
-			m_mStoredJson.Set(targetAssetId, ToJson(target));
-			GetStash().MergeIntoStashed(m_sOwnerId, targetAssetId, GetStash().GetWorld().Capture(target), mergedIds);
-			foreach (string mergedAssetId : mergedIds)
+			foreach (IEntity item : items)
 			{
-				m_mShown.Remove(mergedAssetId);
-				m_mStoredJson.Remove(mergedAssetId);
-				m_mStoredPlacement.Remove(mergedAssetId);
+				string mergedId = FindShownAsset(item);
+				if (mergedId.IsEmpty() && GetStash().GetOwnerOf(item) == m_sOwnerId)
+					mergedId = GetStash().GetAssetId(item);
+
+				if (mergedId.IsEmpty() || mergedId == targetId)
+					continue;
+
+				changes.Remove(mergedId);
+				if (!m_mShown.Contains(mergedId))
+					continue;
+
+				reply.m_mMergedShown.Set(mergedId, item);
+				m_mShown.Remove(mergedId);
+				m_mStoredJson.Remove(mergedId);
+				m_mStoredPlacement.Remove(mergedId);
 			}
 		}
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Items that came out of a stashed item become assets of their own with the same request: STASHED when they lie in
+	//! the container now, DEPLOYED (bound to them) when they left the stash. Items moved into another stashed item only
+	//! change both snapshots, which are in the same request too.
+	protected void CollectSplits(notnull array<IEntity> rootItems, notnull map<string, ref array<IEntity>> nested, notnull MRX_StashWorldChanges changes, notnull MRX_StashSessionChangesReply reply)
+	{
+		foreach (string sourceId, array<IEntity> previous : m_mNested)
+		{
+			// Sources that left, were merged or vanished are handled with their own asset.
+			IEntity source = m_mShown.Get(sourceId);
+			if (!source)
+				continue;
+
+			array<IEntity> current = nested.Get(sourceId);
+			foreach (IEntity item : previous)
+			{
+				if (!item || (current && current.Contains(item)) || IsInside(item, source))
+					continue;
+
+				// Used up, or an asset already.
+				if (!GetStash().GetWorld().IsAlive(item) || !GetStash().GetAssetId(item).IsEmpty())
+					continue;
+
+				if (rootItems.Contains(item))
+				{
+					if (!FindShownAsset(item).IsEmpty() || m_aStoring.Contains(item))
+						continue;
+
+					string placement = GetPlacementText(item);
+					string assetId = changes.Add(item, GetStash().GetWorld().Capture(item), false, placement);
+					m_aStoring.Insert(item);
+					reply.m_mStashedAdds.Set(assetId, item);
+					reply.m_mPlacements.Set(assetId, placement);
+				}
+				else if (item.GetRootParent() != m_Container)
+				{
+					changes.Add(item, GetStash().GetWorld().Capture(item), true);
+				}
+			}
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected static bool IsInside(notnull IEntity item, notnull IEntity ancestor)
+	{
+		IEntity parent = item.GetParent();
+		while (parent)
+		{
+			if (parent == ancestor)
+				return true;
+
+			parent = parent.GetParent();
+		}
+
+		return false;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Internal, called by MRX_StashSessionChangesReply.
+	void OnWorldChanged(notnull MRX_StashSessionChangesReply reply, notnull MRX_StashResult result)
+	{
+		if (result.m_eStatus == MRX_EStashStatus.OK)
+		{
+			foreach (string assetId, IEntity item : reply.m_mStashedAdds)
+			{
+				m_aStoring.RemoveItem(item);
+				if (!item)
+					continue;
+
+				m_mShown.Set(assetId, item);
+				m_mStoredJson.Set(assetId, ToJson(item));
+				m_mStoredPlacement.Set(assetId, reply.m_mPlacements.Get(assetId));
+			}
+
+			MarkDirty();
+			return;
+		}
+
+		// Nothing was applied. The next reconcile finds merges and snapshots again; items that came out of a bag are then
+		// stored like any new item (or given back when that is refused too, e.g. a full stash).
+		m_Manager.ReportResult(this, result.m_eStatus);
+		foreach (string updatedId : reply.GetChanges().m_aUpdatedIds)
+		{
+			m_mStoredJson.Remove(updatedId);
+		}
+
+		foreach (string mergedId, IEntity mergedItem : reply.m_mMergedShown)
+		{
+			if (mergedItem)
+				m_mShown.Set(mergedId, mergedItem);
+		}
+
+		foreach (string addedId, IEntity addedItem : reply.m_mStashedAdds)
+		{
+			m_aStoring.RemoveItem(addedItem);
+		}
+
+		if (!reply.GetChanges().m_aAdded.IsEmpty())
+			MarkDirty();
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -615,5 +728,38 @@ class MRX_StashSessionTakeReply : MRX_StashResultCallback
 	{
 		super.OnResult(result);
 		m_Session.OnTaken(m_sAssetId, m_Item, result);
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+class MRX_StashSessionChangesReply : MRX_StashResultCallback
+{
+	protected ref MRX_StashSession m_Session;
+	protected ref MRX_StashWorldChanges m_Changes;
+	//! New STASHED assets' items, by asset ID. Weak entities.
+	ref map<string, IEntity> m_mStashedAdds = new map<string, IEntity>();
+	//! New STASHED assets' placements, by asset ID.
+	ref map<string, string> m_mPlacements = new map<string, string>();
+	//! Merged assets that were shown, with their items (weak), to show them again if the request fails.
+	ref map<string, IEntity> m_mMergedShown = new map<string, IEntity>();
+
+	//------------------------------------------------------------------------------------------------
+	void MRX_StashSessionChangesReply(MRX_StashSession session, MRX_StashWorldChanges changes)
+	{
+		m_Session = session;
+		m_Changes = changes;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	MRX_StashWorldChanges GetChanges()
+	{
+		return m_Changes;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void OnResult(MRX_StashResult result)
+	{
+		super.OnResult(result);
+		m_Session.OnWorldChanged(this, result);
 	}
 }
