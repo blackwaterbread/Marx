@@ -1,0 +1,15 @@
+GenericEntity : "{54986385A6AF77B2}Prefabs/Props/Military/Arsenal/ArsenalBoxes/ArsenalBox_Base.et" {
+ ID "56F2C6D6F7C6DAFA"
+ components {
+  MRX_ArsenalShopComponent "{6A8C95F68855E7FA}" {
+  }
+  MRX_ShopComponent "{6A8C95F68855BCE3}" {
+   m_sShopId "sample_arsenal"
+   m_sDisplayName "Arsenal"
+   m_sCatalog "{C0F286ACAD6B0E1B}Configs/Marx/Shop/MRX_SampleCatalog.conf"
+  }
+  SCR_ArsenalComponent "{56F2C6D1431AD9AF}" {
+   m_eArsenalSaveType SAVING_DISABLED
+  }
+ }
+}

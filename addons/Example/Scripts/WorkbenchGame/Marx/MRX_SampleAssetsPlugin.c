@@ -1,4 +1,4 @@
-// Development tool: creates the sample assets (Marx_Shop: shop catalog and shop table, Marx_Stash: stash wardrobe).
+// Development tool: creates the sample assets (Marx_Shop: shop catalog, shop table and arsenal box, Marx_Stash: stash wardrobe).
 // Needs an open world: prefabs are built from temporary entities that are deleted again. The world is then marked as
 // modified; do not save it (answer No when Workbench asks on the next reload).
 // Existing files are not overwritten.
@@ -14,6 +14,8 @@ class MRX_SampleAssetsPlugin : WorldEditorPlugin
 	static const string STASH_PREFAB_FILE = "$Marx_Stash:Prefabs/Marx/Stash/MRX_StashWardrobe.et";
 	static const ResourceName STASH_BASE_PREFAB = "{FD47FF9699A52E82}Prefabs/Props/Furniture/Wardrobe_01.et";
 	static const string STASH_CONTAINER_FILE = "$Marx_Stash:Prefabs/Marx/Stash/MRX_StashContainer.et";
+	static const string ARSENAL_PREFAB_FILE = "$Marx_Shop:Prefabs/Marx/Shop/MRX_ArsenalBox.et";
+	static const ResourceName ARSENAL_BASE_PREFAB = "{54986385A6AF77B2}Prefabs/Props/Military/Arsenal/ArsenalBoxes/ArsenalBox_Base.et";
 
 	//! Keeps created container resources alive until the plugin finishes.
 	protected ref array<ref Resource> m_aHolders = {};
@@ -29,6 +31,7 @@ class MRX_SampleAssetsPlugin : WorldEditorPlugin
 			shopValues.Set("m_sShopId", "sample");
 			shopValues.Set("m_sCatalog", catalog);
 			CreateInteractivePrefab(SHOP_PREFAB_FILE, SHOP_BASE_PREFAB, "MRX_ShopComponent", shopValues, "MRX_Shop", "MRX_OpenShopAction", "Trade", "0 0.9 0", false);
+			CreateArsenalPrefab(catalog);
 		}
 
 		CreateInteractivePrefab(STASH_PREFAB_FILE, STASH_BASE_PREFAB, "MRX_StashPointComponent", new map<string, string>(), "MRX_Stash", "MRX_OpenStashAction", "Stash", "0 1 0", true);
@@ -151,6 +154,61 @@ class MRX_SampleAssetsPlugin : WorldEditorPlugin
 		Log("UIInfo", api.CreateObjectVariableMember(source, actionPath, "UIInfo", "UIInfo"));
 		array<ref ContainerIdPathEntry> uiInfoPath = { new ContainerIdPathEntry("ActionsManagerComponent"), new ContainerIdPathEntry("additionalActions", 0), new ContainerIdPathEntry("UIInfo") };
 		Log("UIInfo.Name", api.SetVariableValue(source, uiInfoPath, "Name", actionName));
+
+		Log("CreateEntityTemplate", api.CreateEntityTemplate(source, absPath));
+		api.DeleteEntity(source);
+		if (manageAction)
+			api.EndEntityAction();
+
+		Print(TAG + "saved " + GetResourceName(absPath));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! A child prefab of the vanilla arsenal box that sells the sample catalog for Marx money, without saved loadouts.
+	protected void CreateArsenalPrefab(ResourceName catalog)
+	{
+		string absPath;
+		Workbench.GetAbsolutePath(ARSENAL_PREFAB_FILE, absPath, false);
+		if (FileIO.FileExists(absPath))
+		{
+			Print(TAG + "already exists, not overwritten: " + absPath, LogLevel.WARNING);
+			return;
+		}
+
+		WorldEditorAPI api = SCR_WorldEditorToolHelper.GetWorldEditorAPI();
+		if (!api || !api.GetWorld())
+		{
+			Print(TAG + "open a world first", LogLevel.ERROR);
+			return;
+		}
+
+		FileIO.MakeDirectory(FilePath.StripFileName(absPath));
+		bool manageAction = !api.IsDoingEditAction();
+		if (manageAction)
+			api.BeginEntityAction("Marx sample arsenal");
+
+		IEntitySource source = api.CreateEntity(ARSENAL_BASE_PREFAB, string.Empty, api.GetCurrentEntityLayerId(), null, vector.Zero, vector.Zero);
+		if (!source)
+		{
+			Print(TAG + "CreateEntity failed: " + ARSENAL_BASE_PREFAB, LogLevel.ERROR);
+			if (manageAction)
+				api.EndEntityAction();
+
+			return;
+		}
+
+		source.ClearVariable("coords");
+
+		array<ref ContainerIdPathEntry> shopPath = { new ContainerIdPathEntry("MRX_ShopComponent") };
+		Log("MRX_ShopComponent", api.CreateComponent(source, "MRX_ShopComponent") != null);
+		Log("m_sShopId", api.SetVariableValue(source, shopPath, "m_sShopId", "sample_arsenal"));
+		Log("m_sDisplayName", api.SetVariableValue(source, shopPath, "m_sDisplayName", "Arsenal"));
+		Log("m_sCatalog", api.SetVariableValue(source, shopPath, "m_sCatalog", catalog));
+		Log("MRX_ArsenalShopComponent", api.CreateComponent(source, "MRX_ArsenalShopComponent") != null);
+
+		// SCR_EArsenalSaveType.SAVING_DISABLED: loadouts saved at a Marx arsenal would respawn with unpaid gear.
+		array<ref ContainerIdPathEntry> arsenalPath = { new ContainerIdPathEntry("SCR_ArsenalComponent") };
+		Log("m_eArsenalSaveType", api.SetVariableValue(source, arsenalPath, "m_eArsenalSaveType", SCR_EArsenalSaveType.SAVING_DISABLED.ToString()));
 
 		Log("CreateEntityTemplate", api.CreateEntityTemplate(source, absPath));
 		api.DeleteEntity(source);
