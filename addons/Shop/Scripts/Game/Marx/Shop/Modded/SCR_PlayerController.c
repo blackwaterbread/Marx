@@ -1,4 +1,5 @@
-void MRX_ClientShopResultDelegate(MRX_EShopStatus status, MRX_ETxStatus txStatus, string itemId, int price, string currency);
+//! itemCount and unpaidCount: sales with contents only (see MRX_ShopResult).
+void MRX_ClientShopResultDelegate(MRX_EShopStatus status, MRX_ETxStatus txStatus, string itemId, int price, string currency, int itemCount, int unpaidCount);
 typedef func MRX_ClientShopResultDelegate;
 
 //! Shop requests: the client sends IDs only, the server resolves prices and items from the shop's catalog.
@@ -41,7 +42,7 @@ modded class SCR_PlayerController
 	//! Server: sends a shop result to the player who owns this controller.
 	void MRX_SendShopResult(notnull MRX_ShopResult result)
 	{
-		Rpc(MRX_RpcDo_ShopResult, result.m_eStatus, result.m_eTxStatus, result.m_sItemId, result.m_iPrice, result.m_sCurrency);
+		Rpc(MRX_RpcDo_ShopResult, result.m_eStatus, result.m_eTxStatus, result.m_sItemId, result.m_iPrice, result.m_sCurrency, result.m_iItemCount, result.m_iUnpaidCount);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -81,21 +82,19 @@ modded class SCR_PlayerController
 
 	//------------------------------------------------------------------------------------------------
 	[RplRpc(RplChannel.Reliable, RplRcver.Owner)]
-	protected void MRX_RpcDo_ShopResult(MRX_EShopStatus status, MRX_ETxStatus txStatus, string itemId, int price, string currency)
+	protected void MRX_RpcDo_ShopResult(MRX_EShopStatus status, MRX_ETxStatus txStatus, string itemId, int price, string currency, int itemCount, int unpaidCount)
 	{
 		if (m_MRX_OnShopResult)
-			m_MRX_OnShopResult.Invoke(status, txStatus, itemId, price, currency);
+			m_MRX_OnShopResult.Invoke(status, txStatus, itemId, price, currency, itemCount, unpaidCount);
 	}
 
 	//------------------------------------------------------------------------------------------------
 	//! Server: rate limit, shop lookup and distance check shared by buy and sell requests.
 	protected MRX_EShopStatus MRX_ResolveShopRequest(RplId shopId, out MRX_ShopDefinition shop)
 	{
-		int now = System.GetTickCount();
-		if (m_iMRX_LastShopRequestTick != 0 && now - m_iMRX_LastShopRequestTick < MRX_SHOP_REQUEST_INTERVAL_MS)
+		if (!MRX_CheckShopRequestRate())
 			return MRX_EShopStatus.BUSY;
 
-		m_iMRX_LastShopRequestTick = now;
 		if (!MRX_Shop.GetService())
 			return MRX_EShopStatus.UNKNOWN_SHOP;
 
@@ -115,6 +114,18 @@ modded class SCR_PlayerController
 			return MRX_EShopStatus.UNKNOWN_SHOP;
 
 		return MRX_EShopStatus.OK;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Server: false when the previous shop request of this player came too shortly before.
+	protected bool MRX_CheckShopRequestRate()
+	{
+		int now = System.GetTickCount();
+		if (m_iMRX_LastShopRequestTick != 0 && now - m_iMRX_LastShopRequestTick < MRX_SHOP_REQUEST_INTERVAL_MS)
+			return false;
+
+		m_iMRX_LastShopRequestTick = now;
+		return true;
 	}
 
 	//------------------------------------------------------------------------------------------------

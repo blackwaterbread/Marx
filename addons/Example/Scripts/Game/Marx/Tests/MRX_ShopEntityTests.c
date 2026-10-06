@@ -177,7 +177,7 @@ class MRX_Test_ShopEntityFlow : MRX_TestCase
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void OnShopResult(MRX_EShopStatus status, MRX_ETxStatus txStatus, string itemId, int price, string currency)
+	protected void OnShopResult(MRX_EShopStatus status, MRX_ETxStatus txStatus, string itemId, int price, string currency, int itemCount, int unpaidCount)
 	{
 		string step = "buy";
 		if (m_bSelling)

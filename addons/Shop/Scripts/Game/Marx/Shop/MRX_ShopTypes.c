@@ -38,6 +38,10 @@ class MRX_ShopResult : Managed
 	//! Amount paid (buy) or received (sell).
 	int m_iPrice;
 	string m_sRequestId;
+	//! Sale with contents: items removed, the sold item included.
+	int m_iItemCount;
+	//! Sale with contents: removed items the shop paid nothing for (not in its catalog or not bought back).
+	int m_iUnpaidCount;
 
 	//------------------------------------------------------------------------------------------------
 	static MRX_ShopResult Create(MRX_EShopStatus status, string requestId)
@@ -149,30 +153,51 @@ class MRX_ShopInventory : Managed
 {
 	//------------------------------------------------------------------------------------------------
 	//! True when the player's inventory can take one instance of the prefab now.
-	bool CanGive(int playerId, ResourceName prefab)
+	//! \param target Storage the item must go to (a BaseInventoryStorageComponent in the engine implementation);
+	//! null: any free place in the player's inventory.
+	bool CanGive(int playerId, ResourceName prefab, Managed target = null)
 	{
 		return false;
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Puts one instance of the prefab into the player's inventory and reports success, possibly on a later frame.
-	void Give(int playerId, ResourceName prefab, notnull MRX_ShopDeliveryCallback callback)
+	//! Puts one instance of the prefab into the player's inventory (or into target) and reports success, possibly on a
+	//! later frame.
+	void Give(int playerId, ResourceName prefab, notnull MRX_ShopDeliveryCallback callback, Managed target = null)
 	{
 		callback.OnResult(false);
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Checks that the item is in the player's inventory and holds nothing.
+	//! Checks that the item is in the player's inventory. Without outContents it must also hold nothing (NOT_EMPTY).
 	//! \param[out] prefab Prefab of the item when the status is OK.
-	MRX_EShopStatus InspectForSale(int playerId, Managed item, out ResourceName prefab)
+	//! \param outContents When given, the item may hold other items: receives the prefab of every one of them,
+	//! recursively (attachments, magazines, stored items). Items that must not be sold give NOT_BUYABLE.
+	MRX_EShopStatus InspectForSale(int playerId, Managed item, out ResourceName prefab, array<ResourceName> outContents = null)
 	{
 		return MRX_EShopStatus.NOT_IN_INVENTORY;
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Deletes an item that passed InspectForSale(). True on success.
+	//! Called before Remove(): whatever GiveBack() needs to return the item with its contents and to its place.
+	//! Null by default (GiveBack() then gives a new instance of the prefab).
+	Managed CaptureForReturn(int playerId, Managed item)
+	{
+		return null;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Deletes an item that passed InspectForSale(), with everything it holds. True on success.
 	bool Remove(Managed item)
 	{
 		return false;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Returns a removed item to the player after a failed payment and reports success, possibly on a later frame.
+	//! \param capture What CaptureForReturn() returned for the item.
+	void GiveBack(int playerId, ResourceName prefab, Managed capture, notnull MRX_ShopDeliveryCallback callback)
+	{
+		Give(playerId, prefab, callback);
 	}
 }

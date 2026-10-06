@@ -420,7 +420,7 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void OnShopResult(MRX_EShopStatus status, MRX_ETxStatus txStatus, string itemId, int price, string currency)
+	protected void OnShopResult(MRX_EShopStatus status, MRX_ETxStatus txStatus, string itemId, int price, string currency, int itemCount, int unpaidCount)
 	{
 		if (status == MRX_EShopStatus.OK)
 		{
@@ -494,7 +494,8 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected static string GetFailureText(MRX_EShopStatus status, MRX_ETxStatus txStatus)
+	//! Short text for a failed shop request (API v0).
+	static string GetFailureText(MRX_EShopStatus status, MRX_ETxStatus txStatus)
 	{
 		switch (status)
 		{

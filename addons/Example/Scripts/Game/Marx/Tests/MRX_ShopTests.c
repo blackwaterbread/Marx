@@ -9,6 +9,7 @@ class MRX_ShopTests
 	static const ResourceName PREFAB_MAP = "Prefabs/Test/Map.et";
 	static const ResourceName PREFAB_RADIO = "Prefabs/Test/Radio.et";
 	static const ResourceName PREFAB_UNKNOWN = "Prefabs/Test/Unknown.et";
+	static const ResourceName PREFAB_GEM = "Prefabs/Test/Gem.et";
 
 	//------------------------------------------------------------------------------------------------
 	static void Register(notnull MRX_TestRunner runner)
@@ -23,6 +24,10 @@ class MRX_ShopTests
 		runner.Add(new MRX_Test_ShopSell());
 		runner.Add(new MRX_Test_ShopSellDisabled());
 		runner.Add(new MRX_Test_ShopValidator());
+		runner.Add(new MRX_Test_ShopSellPriceWithContents());
+		runner.Add(new MRX_Test_ShopBuyTarget());
+		runner.Add(new MRX_Test_ShopSellContents());
+		runner.Add(new MRX_Test_ShopSellGiveBack());
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -46,6 +51,9 @@ class MRX_TestSaleItem : Managed
 	ResourceName m_sPrefab;
 	bool m_bEmpty = true;
 	bool m_bRemoved;
+	//! What the item holds, recursively (sales with contents).
+	ref array<ResourceName> m_aContents = {};
+	bool m_bRefundable = true;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -53,36 +61,76 @@ class MRX_TestShopInventory : MRX_ShopInventory
 {
 	int m_iFreeSlots = 10;
 	bool m_bFailDelivery;
+	//! A delivery target given to CanGive() has no room.
+	bool m_bTargetFull;
 	//! "playerId:prefab" of every delivered item.
 	ref array<string> m_aGiven = {};
+	//! Delivery target of every delivered item (null: anywhere).
+	ref array<Managed> m_aGivenTargets = {};
+	//! "playerId:prefab:content count" of every item given back.
+	ref array<string> m_aGivenBack = {};
 
 	//------------------------------------------------------------------------------------------------
-	override bool CanGive(int playerId, ResourceName prefab)
+	override bool CanGive(int playerId, ResourceName prefab, Managed target = null)
 	{
+		if (target)
+			return !m_bTargetFull;
+
 		return m_iFreeSlots > 0;
 	}
 
 	//------------------------------------------------------------------------------------------------
-	override void Give(int playerId, ResourceName prefab, notnull MRX_ShopDeliveryCallback callback)
+	override void Give(int playerId, ResourceName prefab, notnull MRX_ShopDeliveryCallback callback, Managed target = null)
 	{
 		if (!m_bFailDelivery)
 		{
 			m_iFreeSlots--;
 			m_aGiven.Insert(playerId.ToString() + ":" + prefab);
+			m_aGivenTargets.Insert(target);
 		}
 
 		callback.OnResult(!m_bFailDelivery);
 	}
 
 	//------------------------------------------------------------------------------------------------
-	override MRX_EShopStatus InspectForSale(int playerId, Managed item, out ResourceName prefab)
+	override Managed CaptureForReturn(int playerId, Managed item)
+	{
+		return item;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void GiveBack(int playerId, ResourceName prefab, Managed capture, notnull MRX_ShopDeliveryCallback callback)
+	{
+		MRX_TestSaleItem saleItem = MRX_TestSaleItem.Cast(capture);
+		int contents = -1;
+		if (saleItem)
+		{
+			contents = saleItem.m_aContents.Count();
+			saleItem.m_bRemoved = false;
+		}
+
+		m_aGivenBack.Insert(string.Format("%1:%2:%3", playerId, prefab, contents));
+		callback.OnResult(true);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override MRX_EShopStatus InspectForSale(int playerId, Managed item, out ResourceName prefab, array<ResourceName> outContents = null)
 	{
 		MRX_TestSaleItem saleItem = MRX_TestSaleItem.Cast(item);
 		if (!saleItem || saleItem.m_bRemoved || saleItem.m_iHolderPlayerId != playerId)
 			return MRX_EShopStatus.NOT_IN_INVENTORY;
 
-		if (!saleItem.m_bEmpty)
+		if (outContents)
+		{
+			if (!saleItem.m_bRefundable)
+				return MRX_EShopStatus.NOT_BUYABLE;
+
+			outContents.InsertAll(saleItem.m_aContents);
+		}
+		else if (!saleItem.m_bEmpty)
+		{
 			return MRX_EShopStatus.NOT_EMPTY;
+		}
 
 		prefab = saleItem.m_sPrefab;
 		return MRX_EShopStatus.OK;
@@ -134,6 +182,11 @@ class MRX_ShopStep : Managed
 	string m_sItemId;
 	int m_iSaleItem = -1;
 	bool m_bNullShop;
+	bool m_bWithContents;
+	ref Managed m_Target;
+	int m_iExpectedPrice = -1;
+	int m_iExpectedItemCount = -1;
+	int m_iExpectedUnpaidCount = -1;
 	MRX_EShopStatus m_eExpected = MRX_EShopStatus.OK;
 	bool m_bCheckTx;
 	MRX_ETxStatus m_eExpectedTx;
@@ -158,6 +211,35 @@ class MRX_ShopStep : Managed
 	MRX_ShopStep WithoutShop()
 	{
 		m_bNullShop = true;
+		return this;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	MRX_ShopStep WithContents()
+	{
+		m_bWithContents = true;
+		return this;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	MRX_ShopStep To(Managed target)
+	{
+		m_Target = target;
+		return this;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	MRX_ShopStep ExpectPrice(int price)
+	{
+		m_iExpectedPrice = price;
+		return this;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	MRX_ShopStep ExpectCounts(int itemCount, int unpaidCount)
+	{
+		m_iExpectedItemCount = itemCount;
+		m_iExpectedUnpaidCount = unpaidCount;
 		return this;
 	}
 
@@ -217,12 +299,18 @@ class MRX_ShopScenarioTest : MRX_TestCase
 
 	//------------------------------------------------------------------------------------------------
 	//! Item held by a player, to be sold. \return Index for Sell().
-	protected int AddSaleItem(int holderPlayerId, ResourceName prefab, bool empty = true)
+	protected int AddSaleItem(int holderPlayerId, ResourceName prefab, bool empty = true, array<ResourceName> contents = null)
 	{
 		MRX_TestSaleItem item = new MRX_TestSaleItem();
 		item.m_iHolderPlayerId = holderPlayerId;
 		item.m_sPrefab = prefab;
 		item.m_bEmpty = empty;
+		if (contents)
+		{
+			item.m_aContents.InsertAll(contents);
+			item.m_bEmpty = contents.IsEmpty();
+		}
+
 		return m_aSaleItems.Insert(item);
 	}
 
@@ -285,11 +373,11 @@ class MRX_ShopScenarioTest : MRX_TestCase
 		switch (step.m_eKind)
 		{
 			case MRX_EShopStepKind.BUY:
-				m_Shop.Buy(step.m_iPlayerId, shop, step.m_sItemId, m_ShopCallback);
+				m_Shop.Buy(step.m_iPlayerId, shop, step.m_sItemId, m_ShopCallback, step.m_Target);
 				break;
 
 			case MRX_EShopStepKind.SELL:
-				m_Shop.Sell(step.m_iPlayerId, shop, m_aSaleItems[step.m_iSaleItem], m_ShopCallback);
+				m_Shop.Sell(step.m_iPlayerId, shop, m_aSaleItems[step.m_iSaleItem], m_ShopCallback, step.m_bWithContents);
 				break;
 
 			case MRX_EShopStepKind.BALANCE:
@@ -308,6 +396,15 @@ class MRX_ShopScenarioTest : MRX_TestCase
 
 		if (step.m_bCheckTx)
 			CheckStatus(result.m_eTxStatus, step.m_eExpectedTx, label + " economy status");
+
+		if (step.m_iExpectedPrice >= 0)
+			CheckInt(result.m_iPrice, step.m_iExpectedPrice, label + " price");
+
+		if (step.m_iExpectedItemCount >= 0)
+			CheckInt(result.m_iItemCount, step.m_iExpectedItemCount, label + " item count");
+
+		if (step.m_iExpectedUnpaidCount >= 0)
+			CheckInt(result.m_iUnpaidCount, step.m_iExpectedUnpaidCount, label + " unpaid count");
 
 		NextStep();
 	}
@@ -571,6 +668,132 @@ class MRX_Test_ShopValidator : MRX_ShopScenarioTest
 		Buy(1, "ammo");
 		Sell(1, AddSaleItem(1, MRX_ShopTests.PREFAB_RIFLE)).Expect(MRX_EShopStatus.REJECTED);
 		Balance(1, 90);
+	}
+}
+//------------------------------------------------------------------------------------------------
+class MRX_Test_ShopSellPriceWithContents : MRX_TestCase
+{
+	//------------------------------------------------------------------------------------------------
+	override protected void Run()
+	{
+		MRX_ShopCatalog catalog = MRX_ShopTests.CreateCatalog();
+		catalog.m_aItems.Insert(MRX_ShopItem.Create("gem", MRX_ShopTests.PREFAB_GEM, 1000, "gold"));
+		MRX_ShopDefinition shop = MRX_ShopDefinition.Create("s", catalog, 50);
+		int unpaid;
+
+		array<ResourceName> contents = { MRX_ShopTests.PREFAB_AMMO, MRX_ShopTests.PREFAB_AMMO, MRX_ShopTests.PREFAB_UNKNOWN };
+		CheckInt(MRX_ShopService.GetSellPriceWithContents(shop, MRX_ShopTests.PREFAB_RIFLE, contents, unpaid), 56, "rifle 50 + ammo 3 + ammo 3, unknown 0");
+		CheckInt(unpaid, 1, "unknown content unpaid");
+
+		contents = { MRX_ShopTests.PREFAB_RADIO, MRX_ShopTests.PREFAB_GEM, MRX_ShopTests.PREFAB_MAP };
+		CheckInt(MRX_ShopService.GetSellPriceWithContents(shop, MRX_ShopTests.PREFAB_RIFLE, contents, unpaid), 50, "not bought back, other currency and not for sale count 0");
+		CheckInt(unpaid, 3, "all three unpaid");
+
+		contents = { MRX_ShopTests.PREFAB_AMMO };
+		CheckInt(MRX_ShopService.GetSellPriceWithContents(shop, MRX_ShopTests.PREFAB_UNKNOWN, contents, unpaid), 0, "unknown item is not bought, whatever it holds");
+		CheckInt(MRX_ShopService.GetSellPriceWithContents(shop, MRX_ShopTests.PREFAB_RADIO, contents, unpaid), 0, "item not bought back is not bought, whatever it holds");
+
+		ResourceName crate = "Prefabs/Test/Crate.et";
+		catalog.m_aItems.Insert(MRX_ShopItem.Create("crate", crate, int.MAX, "cash", int.MAX));
+		contents = { crate };
+		CheckInt(MRX_ShopService.GetSellPriceWithContents(shop, crate, contents, unpaid), int.MAX, "sum capped at int.MAX");
+		Finish();
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+class MRX_Test_ShopBuyTarget : MRX_ShopScenarioTest
+{
+	protected ref MRX_TestSaleItem m_Target = new MRX_TestSaleItem();
+
+	//------------------------------------------------------------------------------------------------
+	override protected void DefineSteps()
+	{
+		Buy(1, "ammo").To(m_Target);
+		Buy(1, "ammo");
+		Balance(1, 80);
+		Buy(2, "rifle").To(m_Target).Expect(MRX_EShopStatus.NO_SPACE);
+		Balance(2, 100);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void NextStep()
+	{
+		// The target has no room from the fourth step on.
+		m_Inventory.m_bTargetFull = m_iStep >= 2;
+		super.NextStep();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void CheckEnd()
+	{
+		CheckInt(m_Inventory.m_aGivenTargets.Count(), 2, "deliveries");
+		if (m_Inventory.m_aGivenTargets.Count() == 2)
+		{
+			Check(m_Inventory.m_aGivenTargets[0] == m_Target, "first purchase delivered to its target");
+			Check(m_Inventory.m_aGivenTargets[1] == null, "second purchase delivered anywhere");
+		}
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+class MRX_Test_ShopSellContents : MRX_ShopScenarioTest
+{
+	protected int m_iLoaded;
+
+	//------------------------------------------------------------------------------------------------
+	override protected void DefineSteps()
+	{
+		m_iLoaded = AddSaleItem(1, MRX_ShopTests.PREFAB_RIFLE, true, { MRX_ShopTests.PREFAB_AMMO, MRX_ShopTests.PREFAB_AMMO, MRX_ShopTests.PREFAB_UNKNOWN, MRX_ShopTests.PREFAB_RADIO });
+		int full = AddSaleItem(1, MRX_ShopTests.PREFAB_RIFLE, true, { MRX_ShopTests.PREFAB_AMMO });
+		int unknownRoot = AddSaleItem(1, MRX_ShopTests.PREFAB_UNKNOWN, true, { MRX_ShopTests.PREFAB_AMMO });
+		int radioRoot = AddSaleItem(1, MRX_ShopTests.PREFAB_RADIO, true, { MRX_ShopTests.PREFAB_AMMO });
+		int mission = AddSaleItem(1, MRX_ShopTests.PREFAB_RIFLE);
+		m_aSaleItems[mission].m_bRefundable = false;
+		int single = AddSaleItem(1, MRX_ShopTests.PREFAB_AMMO);
+
+		Sell(1, m_iLoaded).WithContents().ExpectPrice(56).ExpectCounts(5, 2);
+		Balance(1, 156);
+		Sell(1, full).Expect(MRX_EShopStatus.NOT_EMPTY);
+		Sell(1, unknownRoot).WithContents().Expect(MRX_EShopStatus.NOT_BUYABLE);
+		Sell(1, radioRoot).WithContents().Expect(MRX_EShopStatus.NOT_BUYABLE);
+		Sell(1, mission).WithContents().Expect(MRX_EShopStatus.NOT_BUYABLE);
+		Sell(1, single).WithContents().ExpectPrice(3).ExpectCounts(1, 0);
+		Balance(1, 159);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void CheckEnd()
+	{
+		Check(m_aSaleItems[m_iLoaded].m_bRemoved, "sold item removed with its contents");
+		CheckInt(m_iSaleEvents, 2, "sale events");
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! The payment of a sale fails (currency unknown to the economy): the item is given back with its contents.
+class MRX_Test_ShopSellGiveBack : MRX_ShopScenarioTest
+{
+	protected int m_iGem;
+
+	//------------------------------------------------------------------------------------------------
+	override protected void DefineSteps()
+	{
+		m_ShopDef.m_Catalog.m_aItems.Insert(MRX_ShopItem.Create("gem", MRX_ShopTests.PREFAB_GEM, 1000, "gold"));
+		m_iGem = AddSaleItem(1, MRX_ShopTests.PREFAB_GEM, true, { MRX_ShopTests.PREFAB_AMMO });
+		Sell(1, m_iGem).WithContents().Expect(MRX_EShopStatus.PAYMENT_FAILED).ExpectTx(MRX_ETxStatus.UNKNOWN_CURRENCY);
+		Balance(1, 100);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void CheckEnd()
+	{
+		CheckInt(m_Inventory.m_aGivenBack.Count(), 1, "items given back");
+		if (!m_Inventory.m_aGivenBack.IsEmpty())
+			Check(m_Inventory.m_aGivenBack[0] == "1:" + MRX_ShopTests.PREFAB_GEM + ":1", "given back with its contents: " + m_Inventory.m_aGivenBack[0]);
+
+		Check(!m_aSaleItems[m_iGem].m_bRemoved, "item back in the inventory");
+		CheckInt(m_iSaleEvents, 0, "no sale event");
 	}
 }
 #endif

@@ -1,4 +1,7 @@
-[ComponentEditorProps(category: "Marx", description: "Makes the entity a shop. The entity also needs an RplComponent and MRX_OpenShopAction in its ActionsManagerComponent.")]
+void MRX_ShopComponentDelegate(MRX_ShopComponent shop);
+typedef func MRX_ShopComponentDelegate;
+
+[ComponentEditorProps(category: "Marx", description: "Makes the entity a shop. The entity also needs an RplComponent and MRX_OpenShopAction in its ActionsManagerComponent, or MRX_ArsenalShopComponent on a vanilla arsenal.")]
 class MRX_ShopComponentClass : ScriptComponentClass
 {
 }
@@ -25,6 +28,27 @@ class MRX_ShopComponent : ScriptComponent
 	protected float m_fMaxDistance;
 
 	protected ref MRX_ShopDefinition m_Definition;
+	protected ref ScriptInvokerBase<MRX_ShopComponentDelegate> m_OnDefinitionChanged;
+
+	//------------------------------------------------------------------------------------------------
+	//! Replaces the shop's settings at runtime, e.g. with a catalog built by script. Not replicated: call it with the
+	//! same definition on the server and on every client.
+	void SetDefinition(notnull MRX_ShopDefinition definition)
+	{
+		m_Definition = definition;
+		if (m_OnDefinitionChanged)
+			m_OnDefinitionChanged.Invoke(this);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Invoked by SetDefinition().
+	ScriptInvokerBase<MRX_ShopComponentDelegate> GetOnDefinitionChanged()
+	{
+		if (!m_OnDefinitionChanged)
+			m_OnDefinitionChanged = new ScriptInvokerBase<MRX_ShopComponentDelegate>();
+
+		return m_OnDefinitionChanged;
+	}
 
 	//------------------------------------------------------------------------------------------------
 	//! \return Null when the catalog cannot be loaded.
