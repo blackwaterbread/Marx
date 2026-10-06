@@ -45,6 +45,8 @@ class MRX_ItemSnapshot : Managed
 	int m_iSlot = -1;
 	//! Rounds in the item's own magazine, -1 when it has none.
 	int m_iAmmo = -1;
+	//! The item was handed out for free (see MRX_IssuedItems).
+	bool m_bIssued;
 	//! Damaged hit zones only.
 	ref array<ref MRX_HitZoneSnapshot> m_aHitZones = {};
 	ref array<ref MRX_FuelSnapshot> m_aFuel = {};
@@ -82,6 +84,7 @@ class MRX_ItemSnapshot : Managed
 		snapshot.m_sStorage = m_sStorage;
 		snapshot.m_iSlot = m_iSlot;
 		snapshot.m_iAmmo = m_iAmmo;
+		snapshot.m_bIssued = m_bIssued;
 
 		foreach (MRX_HitZoneSnapshot hitZone : m_aHitZones)
 		{

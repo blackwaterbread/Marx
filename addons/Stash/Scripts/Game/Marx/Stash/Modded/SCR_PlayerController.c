@@ -15,6 +15,8 @@ modded class SCR_PlayerController
 	//! Client: the server's grid of the open stash (MRX_StashStorageComponent.GetPlacementsText), kept until the
 	//! container has replicated.
 	protected string m_sMRX_StashPlacements;
+	//! Client: pages of the open stash (the owner's, 0 = no limit), kept until the container has replicated.
+	protected int m_iMRX_StashPages = -1;
 
 	//------------------------------------------------------------------------------------------------
 	//! Client: asks the server to open the player's stash at the stash point.
@@ -27,10 +29,10 @@ modded class SCR_PlayerController
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Server: tells the owning client to show the filled container.
-	void MRX_SendStashContainerOpen(IEntity container)
+	//! Server: tells the owning client to show the filled container. \param maxPages Pages of the owner's stash.
+	void MRX_SendStashContainerOpen(IEntity container, int maxPages)
 	{
-		Rpc(MRX_RpcDo_StashContainerOpen, SCR_EntityHelper.EntityToRplId(container));
+		Rpc(MRX_RpcDo_StashContainerOpen, SCR_EntityHelper.EntityToRplId(container), maxPages);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -41,10 +43,10 @@ modded class SCR_PlayerController
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Server: sends the grid of the open stash to the owning client.
-	void MRX_SendStashPlacements(string placements)
+	//! Server: sends the grid and the pages of the open stash to the owning client.
+	void MRX_SendStashPlacements(string placements, int maxPages)
 	{
-		Rpc(MRX_RpcDo_StashPlacements, placements);
+		Rpc(MRX_RpcDo_StashPlacements, placements, maxPages);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -70,9 +72,10 @@ modded class SCR_PlayerController
 
 	//------------------------------------------------------------------------------------------------
 	[RplRpc(RplChannel.Reliable, RplRcver.Owner)]
-	protected void MRX_RpcDo_StashPlacements(string placements)
+	protected void MRX_RpcDo_StashPlacements(string placements, int maxPages)
 	{
 		m_sMRX_StashPlacements = placements;
+		m_iMRX_StashPages = maxPages;
 		MRX_ApplyStashPlacements();
 	}
 
@@ -85,7 +88,12 @@ modded class SCR_PlayerController
 			return;
 
 		if (!Replication.IsServer())
+		{
+			if (m_iMRX_StashPages >= 0)
+				storage.SetMaxPages(m_iMRX_StashPages);
+
 			storage.ApplyPlacementsText(m_sMRX_StashPlacements);
+		}
 
 		GetGame().GetCallqueue().Remove(MRX_RefreshStashPanel);
 		GetGame().GetCallqueue().CallLater(MRX_RefreshStashPanel);
@@ -118,9 +126,10 @@ modded class SCR_PlayerController
 
 	//------------------------------------------------------------------------------------------------
 	[RplRpc(RplChannel.Reliable, RplRcver.Owner)]
-	protected void MRX_RpcDo_StashContainerOpen(RplId containerId)
+	protected void MRX_RpcDo_StashContainerOpen(RplId containerId, int maxPages)
 	{
 		m_MRX_StashContainerId = containerId;
+		m_iMRX_StashPages = maxPages;
 		m_sMRX_StashPlacements = string.Empty;
 		m_iMRX_StashContainerWaitMs = 0;
 		MRX_OpenStashContainer();
@@ -161,6 +170,9 @@ modded class SCR_PlayerController
 		}
 
 		storage.SetPreviewEntity(m_MRX_StashPoint);
+		if (!Replication.IsServer() && m_iMRX_StashPages >= 0)
+			storage.SetMaxPages(m_iMRX_StashPages);
+
 		MRX_SetStashItemOfInterest(storage.GetOwner());
 		manager.m_OnInventoryOpenInvoker.Remove(MRX_OnInventoryOpenChanged);
 		manager.m_OnInventoryOpenInvoker.Insert(MRX_OnInventoryOpenChanged);
@@ -182,6 +194,9 @@ modded class SCR_PlayerController
 
 			return;
 		}
+
+		if (!Replication.IsServer() && m_iMRX_StashPages >= 0)
+			storage.SetMaxPages(m_iMRX_StashPages);
 
 		if (!Replication.IsServer() && !m_sMRX_StashPlacements.IsEmpty())
 			storage.ApplyPlacementsText(m_sMRX_StashPlacements);

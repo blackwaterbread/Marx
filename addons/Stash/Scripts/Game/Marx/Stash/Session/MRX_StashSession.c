@@ -169,6 +169,11 @@ class MRX_StashSession : Managed
 			return;
 		}
 
+		// The owner's extra pages (e.g. bought) on top of the container's own.
+		int pages = MRX_StashPages.GetPages(record);
+		if (pages > 0)
+			m_Storage.SetMaxPages(pages);
+
 		// Stashed items always show, also when they take more pages than the container allows now.
 		m_Storage.SetRestoring(true);
 		MRX_EntityAssetWorld world = MRX_EntityAssetWorld.Cast(GetStash().GetWorld());

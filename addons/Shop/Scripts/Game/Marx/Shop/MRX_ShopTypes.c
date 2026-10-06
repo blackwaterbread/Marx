@@ -24,7 +24,11 @@ enum MRX_EShopStatus
 	//! The item could not be given after payment; the payment was refunded.
 	DELIVERY_FAILED,
 	//! Another request of the same player is still running.
-	BUSY
+	BUSY,
+	//! The item was handed out for free (MRX_IssuedItems) and is not bought back.
+	ISSUED,
+	//! The product cannot be bought any more (e.g. its maximum is reached), see MRX_ShopProduct.
+	LIMIT_REACHED
 }
 
 //! Result of a shop request (API v0).
@@ -172,7 +176,8 @@ class MRX_ShopInventory : Managed
 	//! Checks that the item is in the player's inventory. Without outContents it must also hold nothing (NOT_EMPTY).
 	//! \param[out] prefab Prefab of the item when the status is OK.
 	//! \param outContents When given, the item may hold other items: receives the prefab of every one of them,
-	//! recursively (attachments, magazines, stored items). Items that must not be sold give NOT_BUYABLE.
+	//! recursively (attachments, magazines, stored items); an empty prefab for items worth nothing to shops (issued,
+	//! see MRX_IssuedItems). Items that must not be sold give NOT_BUYABLE, an issued item itself ISSUED.
 	MRX_EShopStatus InspectForSale(int playerId, Managed item, out ResourceName prefab, array<ResourceName> outContents = null)
 	{
 		return MRX_EShopStatus.NOT_IN_INVENTORY;

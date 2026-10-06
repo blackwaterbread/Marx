@@ -11,6 +11,7 @@ class MRX_MarxSystem : GameSystem
 	protected ref MRX_EconomyService m_Economy;
 	protected ref MRX_IdentityService m_Identity;
 	protected ref MRX_StashService m_Stash;
+	protected ref MRX_PriceList m_PriceList;
 
 	//------------------------------------------------------------------------------------------------
 	override static void InitInfo(WorldSystemInfo outInfo)
@@ -49,6 +50,18 @@ class MRX_MarxSystem : GameSystem
 	}
 
 	//------------------------------------------------------------------------------------------------
+	MRX_PriceList GetPriceList()
+	{
+		return m_PriceList;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	void SetPriceList(MRX_PriceList priceList)
+	{
+		m_PriceList = priceList;
+	}
+
+	//------------------------------------------------------------------------------------------------
 	MRX_Settings GetSettings()
 	{
 		return m_Settings;
@@ -62,6 +75,7 @@ class MRX_MarxSystem : GameSystem
 			return;
 
 		m_Settings = LoadSettings();
+		MRX_IssuedItems.Clear();
 		m_Economy = new MRX_EconomyService(CreateBackend(), m_Settings.CreateRules());
 		m_Economy.GetOnBalanceChanged().Insert(OnBalanceChanged);
 		m_Economy.Init();
@@ -97,6 +111,7 @@ class MRX_MarxSystem : GameSystem
 			gameMode.GetOnPlayerKilled().Remove(OnPlayerKilled);
 
 		m_Stash = null;
+		m_PriceList = null;
 		m_Identity = null;
 		m_Economy = null;
 		m_Settings = null;

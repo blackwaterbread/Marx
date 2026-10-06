@@ -187,6 +187,37 @@ class MRX_StashChangeOp : MRX_StashOp
 }
 
 //------------------------------------------------------------------------------------------------
+//! Applies one property change (SetProperty).
+class MRX_StashPropertyOp : MRX_StashOp
+{
+	protected ref MRX_PropertyChange m_Change;
+	protected ref MRX_TxContext m_Context;
+
+	//------------------------------------------------------------------------------------------------
+	void MRX_StashPropertyOp(MRX_StashService service, string ownerId, notnull MRX_PropertyChange change, MRX_TxContext context, MRX_StashResultCallback callback)
+	{
+		Init(service, ownerId, callback);
+		m_Change = change.Copy();
+		if (context)
+			m_Context = context.Copy();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void Start()
+	{
+		if (!m_Context || !m_Context.IsValid())
+		{
+			Fail(MRX_EStashStatus.INVALID_CONTEXT);
+			return;
+		}
+
+		MRX_StashRequest request = m_Service.CreateRequest(m_sOwnerId, m_Context, string.Empty);
+		request.m_aPropertyChanges.Insert(m_Change);
+		ApplyRequest(request);
+	}
+}
+
+//------------------------------------------------------------------------------------------------
 class MRX_StashGrantOp : MRX_StashOp
 {
 	protected ResourceName m_sPrefab;

@@ -147,6 +147,15 @@ class MRX_StashService : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! Sets a property of the owner's stash (MRX_StashRecord.GetProperty; an empty value removes it).
+	//! \param change E.g. MRX_PropertyChange.Create(key, value).Expecting(oldValue) for a change that only applies while
+	//! the property still has the value read before (INVALID_STATE otherwise).
+	void SetProperty(string ownerId, notnull MRX_PropertyChange change, MRX_TxContext context, MRX_StashResultCallback callback = null)
+	{
+		Enqueue(ownerId, new MRX_StashPropertyOp(this, ownerId, change, context, callback));
+	}
+
+	//------------------------------------------------------------------------------------------------
 	void SetLossPolicy(notnull MRX_LossPolicy policy)
 	{
 		m_LossPolicy = policy;

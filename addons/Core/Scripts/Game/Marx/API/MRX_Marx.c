@@ -36,6 +36,26 @@ class MRX_Marx
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! Prices of items bought or sold outside shops, e.g. when a saved loadout is put on. Null: such features are off.
+	static MRX_PriceList GetPriceList()
+	{
+		MRX_MarxSystem system = MRX_MarxSystem.GetInstance();
+		if (!system)
+			return null;
+
+		return system.GetPriceList();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Sets the prices returned by GetPriceList() (e.g. MRX_ShopPriceList from the shops' catalogs).
+	static void SetPriceList(MRX_PriceList priceList)
+	{
+		MRX_MarxSystem system = MRX_MarxSystem.GetInstance();
+		if (system)
+			system.SetPriceList(priceList);
+	}
+
+	//------------------------------------------------------------------------------------------------
 	static MRX_IdentityService GetIdentity()
 	{
 		MRX_MarxSystem system = MRX_MarxSystem.GetInstance();

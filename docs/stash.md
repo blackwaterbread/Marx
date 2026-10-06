@@ -18,10 +18,21 @@ Allowed changes: `STASHED -> DEPLOYED`, `DEPLOYED -> STASHED | LOST | CONSUMED`.
 
 ## What is stored
 
-An asset record holds the prefab and an `MRX_ItemSnapshot`: magazine ammo, damaged hit zones, fuel, and every item
-stored in it (attachments, magazines, contents of backpacks and vests), recursively, with their storage and slot.
-The snapshot is plain data in Marx's own format, independent of the storage backend. A granted asset without a
-snapshot spawns with its prefab defaults.
+An asset record holds the prefab and an `MRX_ItemSnapshot`: magazine ammo, damaged hit zones, fuel, whether the item
+was issued (see below), and every item stored in it (attachments, magazines, contents of backpacks and vests),
+recursively, with their storage and slot. The snapshot is plain data in Marx's own format, independent of the storage
+backend. A granted asset without a snapshot spawns with its prefab defaults.
+
+A stash also keeps **properties**: string values by key (`MRX_StashRecord.GetProperty(key)`), set with
+`SetProperty(ownerId, MRX_PropertyChange.Create(key, value), context, cb)` (an empty value removes the property).
+`MRX_PropertyChange.Expecting(oldValue)` applies the change only while the property still has the value read before,
+so read-modify-write needs no lock (`INVALID_STATE` otherwise). Keys are namespaced: `marx.` for Marx, the mod's own
+prefix for mods. Marx uses them for extra stash pages and saved loadouts.
+
+**Issued items** (`MRX_IssuedItems`, server): items handed out for free, e.g. the kit a player respawns with. Mark them
+with `Mark(item)` (with contents) or `MarkCarried(character)`. They are worth nothing: shops do not buy them back and
+loadouts do not count them as the player's own gear. The mark follows the item into snapshots, so a stashed issued item
+comes back issued.
 
 ## Operations
 
@@ -109,7 +120,7 @@ by other characters cannot be put in (`MRX_StashStorageComponent.CanStoreItem`).
 holds up to 200000 cm3 and items up to 300 cm per side (`MaxCumulativeVolume`, `MaxItemSize` with
 `UseCapacityCoefficient` off, because the container has no model); the asset limit of the settings applies as well.
 The items lie on a grid of at most 3 pages of 6 x 8 cells (`m_iMaxPages` on `MRX_StashStorageComponent`, 0 = no
-limit; `MRX_StashGrid`), each item on its own cells (1x1, 2x1, 2x2 or 3x3 as in the vanilla inventory; identical items
+limit; `MRX_StashGrid`), plus the owner's extra pages (`MRX_StashPages`, below), each item on its own cells (1x1, 2x1, 2x2 or 3x3 as in the vanilla inventory; identical items
 are not stacked). The panel (`MRX_StashPanelUI`) shows all pages from the start and every item at its cell:
 
 - An item dropped on an empty cell goes there, whether it is moved inside the stash or put in from elsewhere. A drop
@@ -123,6 +134,35 @@ are not stacked). The panel (`MRX_StashPanelUI`) shows all pages from the start 
   the grid the server sends.
 
 Server side, `MRX_StashSessions.Get()` returns the open containers (`MRX_StashSessionManager`).
+
+**Extra pages** (`MRX_StashPages`, server): a stash shows the container's own pages plus the owner's extra pages (stash
+property `marx.stash.extraPages`). `AddPages(ownerId, count, maxPages, context, callback)` adds pages up to `maxPages`
+in all and reports whether the limit was reached, e.g. for a shop product that sells pages. `GetPages(record)` returns
+the pages of an owner's stash. The stash panel shows the pages of the owner from the next opening.
+
+### Loadouts
+
+Below the stash panel, a loadout bar (`MRX_LoadoutBar`) lists the player's loadout slots (`MRX_Settings`
+`m_iLoadoutSlots`, default 3), each with its main weapon, number of items and what putting it on costs now, and the
+player's balance under it. Its buttons act only when held (`MRX_HoldButton`):
+
+- **Save** stores what the character wears and carries (clothing, weapon and equipment storages, the ones the vanilla
+  arsenal loadout saves) into the slot, as new items: full magazines, no damage. It replaces what the slot held.
+- **Load** puts the loadout on. Items the player has are used again (by prefab; issued items and magazines that are
+  not full do not count), missing ones are bought, the player's other items are sold, with the prices of
+  `MRX_Marx.GetPriceList()` (one currency; loading is off without a price list). Items neither owned nor for sale are
+  left out with their contents. The difference is paid or received at once (ledger source `marx_loadout`). The server
+  plans, takes the payment, plans again (if the gear changed meanwhile the payment is refunded: `CHANGED`), puts the
+  loadout on and refunds the price of items that could not be put on (`INCOMPLETE`). Everything worn afterwards counts
+  as the player's own, issued items it kept included.
+
+Loadouts are kept as stash properties (`marx.loadout.<slot>`) and need the open stash, so they are only used at a stash
+point, never on respawn. Server API: `MRX_Loadouts.Get()` with `Save(playerId, slot, cb)`, `Load(playerId, slot, cb)`
+and `Describe(playerId, cb)` (status `MRX_ELoadoutStatus`). The cost rules are in `MRX_LoadoutMath` (`Marx_Core`,
+no engine dependencies); `MRX_EntitySnapshots.CaptureLoadout` and `ApplyLoadout` capture and put on a character's gear.
+Clients call `SCR_PlayerController.MRX_RequestLoadoutSave(slot)`, `MRX_RequestLoadoutLoad(slot)` and
+`MRX_RequestLoadoutInfo()`, answered through `MRX_GetOnLoadoutResult()` and `MRX_GetOnLoadoutInfo()`; the server also
+sends the slots when the stash opens and when the character's gear changes.
 
 ### Other front-ends
 

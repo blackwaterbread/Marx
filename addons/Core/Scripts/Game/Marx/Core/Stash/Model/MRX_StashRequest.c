@@ -90,6 +90,43 @@ class MRX_AssetChange : Managed
 	}
 }
 
+//! One property change of a stash request: sets the value (empty removes the property).
+class MRX_PropertyChange : Managed
+{
+	string m_sKey;
+	string m_sValue;
+	//! When set, the change fails with INVALID_STATE unless the property currently has m_sExpected (empty = not set).
+	bool m_bCheck;
+	string m_sExpected;
+
+	//------------------------------------------------------------------------------------------------
+	static MRX_PropertyChange Create(string key, string value)
+	{
+		MRX_PropertyChange change = new MRX_PropertyChange();
+		change.m_sKey = key;
+		change.m_sValue = value;
+		return change;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Only applies while the property has this value. \return This change.
+	MRX_PropertyChange Expecting(string expected)
+	{
+		m_bCheck = true;
+		m_sExpected = expected;
+		return this;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	MRX_PropertyChange Copy()
+	{
+		MRX_PropertyChange change = Create(m_sKey, m_sValue);
+		change.m_bCheck = m_bCheck;
+		change.m_sExpected = m_sExpected;
+		return change;
+	}
+}
+
 //! Atomic set of changes to one owner's stash, as passed to the storage backend.
 class MRX_StashRequest : Managed
 {
@@ -99,6 +136,7 @@ class MRX_StashRequest : Managed
 	//! Unix time, written to the changed assets.
 	int m_iTimestamp;
 	ref array<ref MRX_AssetChange> m_aChanges = {};
+	ref array<ref MRX_PropertyChange> m_aPropertyChanges = {};
 
 	//------------------------------------------------------------------------------------------------
 	MRX_StashRequest Copy()
@@ -113,6 +151,11 @@ class MRX_StashRequest : Managed
 		foreach (MRX_AssetChange change : m_aChanges)
 		{
 			request.m_aChanges.Insert(change.Copy());
+		}
+
+		foreach (MRX_PropertyChange propertyChange : m_aPropertyChanges)
+		{
+			request.m_aPropertyChanges.Insert(propertyChange.Copy());
 		}
 
 		return request;

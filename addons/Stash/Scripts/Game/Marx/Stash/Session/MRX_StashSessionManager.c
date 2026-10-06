@@ -84,8 +84,10 @@ class MRX_StashSessionManager : Managed
 	void OnSessionReady(notnull MRX_StashSession session)
 	{
 		SCR_PlayerController controller = GetController(session.GetPlayerId());
-		if (controller)
-			controller.MRX_SendStashContainerOpen(session.GetContainer());
+		if (controller && session.GetStorage())
+			controller.MRX_SendStashContainerOpen(session.GetContainer(), session.GetStorage().GetMaxPages());
+
+		MRX_LoadoutInfoPush.Schedule(session.GetPlayerId());
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -111,14 +113,17 @@ class MRX_StashSessionManager : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Internal, called by MRX_StashSession: sends the container's grid to the player's client.
+	//! Internal, called by MRX_StashSession after a change: sends the container's grid to the player's client, and the
+	//! loadout slots, whose prices depend on what the character carries.
 	void SendPlacements(notnull MRX_StashSession session)
 	{
 		SCR_PlayerController controller = GetController(session.GetPlayerId());
 		if (!controller || !session.GetStorage())
 			return;
 
-		controller.MRX_SendStashPlacements(session.GetStorage().GetPlacementsText());
+		MRX_LoadoutInfoPush.Schedule(session.GetPlayerId());
+
+		controller.MRX_SendStashPlacements(session.GetStorage().GetPlacementsText(), session.GetStorage().GetMaxPages());
 	}
 
 	//------------------------------------------------------------------------------------------------

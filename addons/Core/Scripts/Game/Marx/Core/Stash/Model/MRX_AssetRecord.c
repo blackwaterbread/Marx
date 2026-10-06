@@ -48,7 +48,24 @@ class MRX_AssetRecord : Managed
 	}
 }
 
-//! Stored state of one owner's stash: assets and recent idempotency keys.
+//! A value kept with a stash (API v0), e.g. bought capacity or a saved loadout. Keys are namespaced by the addon or mod
+//! that uses them ("marx.", "<mod>.").
+class MRX_StashProperty : Managed
+{
+	string m_sKey;
+	string m_sValue;
+
+	//------------------------------------------------------------------------------------------------
+	static MRX_StashProperty Create(string key, string value)
+	{
+		MRX_StashProperty property = new MRX_StashProperty();
+		property.m_sKey = key;
+		property.m_sValue = value;
+		return property;
+	}
+}
+
+//! Stored state of one owner's stash: assets, properties and recent idempotency keys.
 class MRX_StashRecord : Managed
 {
 	string m_sOwnerId;
@@ -56,6 +73,8 @@ class MRX_StashRecord : Managed
 	ref array<ref MRX_AssetRecord> m_aAssets = {};
 	//! Oldest first, trimmed to MRX_StorageRules.m_iMaxRecentKeys. The entry's tx ID holds the request ID.
 	ref array<ref MRX_IdempotencyEntry> m_aRecentKeys = {};
+	//! Set properties only; a removed property has no entry.
+	ref array<ref MRX_StashProperty> m_aProperties = {};
 
 	//------------------------------------------------------------------------------------------------
 	static MRX_StashRecord Create(string ownerId)
@@ -91,6 +110,48 @@ class MRX_StashRecord : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! \return Value of the property, empty when it is not set.
+	string GetProperty(string key)
+	{
+		MRX_StashProperty property = FindProperty(key);
+		if (!property)
+			return string.Empty;
+
+		return property.m_sValue;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	MRX_StashProperty FindProperty(string key)
+	{
+		foreach (MRX_StashProperty property : m_aProperties)
+		{
+			if (property.m_sKey == key)
+				return property;
+		}
+
+		return null;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Sets a property; an empty value removes it.
+	void SetProperty(string key, string value)
+	{
+		MRX_StashProperty property = FindProperty(key);
+		if (value.IsEmpty())
+		{
+			if (property)
+				m_aProperties.RemoveItemOrdered(property);
+
+			return;
+		}
+
+		if (property)
+			property.m_sValue = value;
+		else
+			m_aProperties.Insert(MRX_StashProperty.Create(key, value));
+	}
+
+	//------------------------------------------------------------------------------------------------
 	//! \return Request ID committed with this source and key, or empty when unknown.
 	string FindRequestId(string source, string key)
 	{
@@ -115,6 +176,11 @@ class MRX_StashRecord : Managed
 		foreach (MRX_IdempotencyEntry key : m_aRecentKeys)
 		{
 			record.m_aRecentKeys.Insert(MRX_IdempotencyEntry.Create(key.m_sSource, key.m_sKey, key.m_sTxId));
+		}
+
+		foreach (MRX_StashProperty property : m_aProperties)
+		{
+			record.m_aProperties.Insert(MRX_StashProperty.Create(property.m_sKey, property.m_sValue));
 		}
 
 		return record;

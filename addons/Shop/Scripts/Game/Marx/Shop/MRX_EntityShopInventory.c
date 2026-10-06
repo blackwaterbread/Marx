@@ -82,6 +82,9 @@ class MRX_EntityShopInventory : MRX_ShopInventory
 		if (!itemComponent || itemComponent.IsLocked())
 			return MRX_EShopStatus.NOT_IN_INVENTORY;
 
+		if (MRX_IssuedItems.IsIssued(entity))
+			return MRX_EShopStatus.ISSUED;
+
 		if (outContents)
 		{
 			// Mission items (not refundable) are never deleted, neither alone nor inside another item.
@@ -253,7 +256,11 @@ class MRX_EntityShopInventory : MRX_ShopInventory
 				if (item.IsLocked() || !IsRefundable(item))
 					return false;
 
-				outContents.Insert(SCR_ResourceNameUtils.GetPrefabName(child));
+				if (MRX_IssuedItems.IsIssued(child))
+					outContents.Insert(ResourceName.Empty);
+				else
+					outContents.Insert(SCR_ResourceNameUtils.GetPrefabName(child));
+
 				if (!CollectContents(child, outContents))
 					return false;
 			}

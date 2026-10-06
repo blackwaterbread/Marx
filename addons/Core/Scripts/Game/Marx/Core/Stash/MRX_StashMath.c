@@ -13,7 +13,7 @@ class MRX_StashMath
 		if (request.m_sOwnerId.IsEmpty())
 			return MRX_StashResult.Create(MRX_EStashStatus.OWNER_NOT_READY, request.m_sRequestId);
 
-		if (request.m_aChanges.IsEmpty())
+		if (request.m_aChanges.IsEmpty() && request.m_aPropertyChanges.IsEmpty())
 			return MRX_StashResult.Create(MRX_EStashStatus.INVALID_STATE, request.m_sRequestId);
 
 		string committedId = record.FindRequestId(context.m_sSource, context.m_sIdempotencyKey);
@@ -30,12 +30,24 @@ class MRX_StashMath
 				return MRX_StashResult.Create(status, request.m_sRequestId);
 		}
 
+		foreach (MRX_PropertyChange propertyChange : request.m_aPropertyChanges)
+		{
+			if (propertyChange.m_sKey.IsEmpty())
+				return MRX_StashResult.Create(MRX_EStashStatus.INVALID_STATE, request.m_sRequestId);
+
+			if (propertyChange.m_bCheck && working.GetProperty(propertyChange.m_sKey) != propertyChange.m_sExpected)
+				return MRX_StashResult.Create(MRX_EStashStatus.INVALID_STATE, request.m_sRequestId);
+
+			working.SetProperty(propertyChange.m_sKey, propertyChange.m_sValue);
+		}
+
 		// A stash above the limit (e.g. after a config change) still accepts changes that do not add assets.
 		int countAfter = working.m_aAssets.Count();
 		if (rules.m_iMaxStashAssets > 0 && countAfter > rules.m_iMaxStashAssets && countAfter > countBefore)
 			return MRX_StashResult.Create(MRX_EStashStatus.STASH_FULL, request.m_sRequestId);
 
 		record.m_aAssets = working.m_aAssets;
+		record.m_aProperties = working.m_aProperties;
 		record.m_aRecentKeys.Insert(MRX_IdempotencyEntry.Create(context.m_sSource, context.m_sIdempotencyKey, request.m_sRequestId));
 		while (record.m_aRecentKeys.Count() > rules.m_iMaxRecentKeys)
 		{

@@ -29,6 +29,7 @@ class MRX_StashStateSerializer : ScriptedStateSerializer
 		bool typeDiscriminator = context.EnableTypeDiscriminator(false);
 		context.WriteValue("assets", record.m_aAssets);
 		context.WriteValue("keys", record.m_aRecentKeys);
+		context.WriteValue("properties", record.m_aProperties);
 		context.EnableTypeDiscriminator(typeDiscriminator);
 
 		return ESerializeResult.OK;
@@ -56,6 +57,7 @@ class MRX_StashStateSerializer : ScriptedStateSerializer
 		bool typeDiscriminator = context.EnableTypeDiscriminator(false);
 		context.ReadValue("assets", record.m_aAssets);
 		context.ReadValue("keys", record.m_aRecentKeys);
+		context.ReadValue("properties", record.m_aProperties);
 		context.EnableTypeDiscriminator(typeDiscriminator);
 
 		// Missing members come back as null.
@@ -64,6 +66,10 @@ class MRX_StashStateSerializer : ScriptedStateSerializer
 
 		if (!record.m_aRecentKeys)
 			record.m_aRecentKeys = {};
+
+		// Saved before stash properties existed.
+		if (!record.m_aProperties)
+			record.m_aProperties = {};
 
 		foreach (MRX_AssetRecord asset : record.m_aAssets)
 		{

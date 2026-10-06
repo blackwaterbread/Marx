@@ -6,8 +6,59 @@ class MRX_EntitySnapshots
 	static MRX_ItemSnapshot Capture(notnull IEntity entity)
 	{
 		MRX_ItemSnapshot snapshot = MRX_ItemSnapshot.Create(SCR_ResourceNameUtils.GetPrefabName(entity));
-		CaptureInto(entity, snapshot);
+		set<BaseInventoryStorageComponent> storages = new set<BaseInventoryStorageComponent>();
+		FindStorages(entity, storages);
+		CaptureInto(entity, snapshot, storages, false);
 		return snapshot;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Gear of a character as a loadout (API v0): the items in its clothing, weapon and equipment storages (those the
+	//! vanilla arsenal loadout saves, not e.g. applied tourniquets or the identity item), captured as new items: full
+	//! magazines, no damage, not issued. The root is the character; its own prefab is not part of the loadout.
+	static MRX_ItemSnapshot CaptureLoadout(notnull IEntity character)
+	{
+		MRX_ItemSnapshot snapshot = MRX_ItemSnapshot.Create(SCR_ResourceNameUtils.GetPrefabName(character));
+		CaptureInto(character, snapshot, GetLoadoutStorages(character), true);
+		return snapshot;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Puts a loadout (CaptureLoadout) on a character: items of the loadout storages the loadout does not list are
+	//! deleted, items of the same prefab in the same slot kept (with the loadout's state), missing ones spawned.
+	//! \return False when part of the loadout could not be put on.
+	static bool ApplyLoadout(notnull IEntity character, notnull MRX_ItemSnapshot loadout, notnull InventoryStorageManagerComponent manager)
+	{
+		return ApplyContents(character, loadout, manager, GetLoadoutStorages(character));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Items in the character's loadout storages (see CaptureLoadout), at any depth.
+	static void GetLoadoutItems(notnull IEntity character, notnull array<IEntity> outItems)
+	{
+		foreach (BaseInventoryStorageComponent storage : GetLoadoutStorages(character))
+		{
+			CollectItems(storage, outItems);
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Storages of a character that hold its loadout: the component types the vanilla arsenal loadout saves (exactly
+	//! these types, as vanilla checks them).
+	static set<BaseInventoryStorageComponent> GetLoadoutStorages(notnull IEntity character)
+	{
+		array<typename> types;
+		SCR_ArsenalManagerComponent.GetArsenalLoadoutComponentsToCheck(types);
+		set<BaseInventoryStorageComponent> all = new set<BaseInventoryStorageComponent>();
+		FindStorages(character, all);
+		set<BaseInventoryStorageComponent> storages = new set<BaseInventoryStorageComponent>();
+		foreach (BaseInventoryStorageComponent storage : all)
+		{
+			if (types && types.Contains(storage.Type()))
+				storages.Insert(storage);
+		}
+
+		return storages;
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -21,7 +72,13 @@ class MRX_EntitySnapshots
 
 		set<BaseInventoryStorageComponent> storages = new set<BaseInventoryStorageComponent>();
 		FindStorages(entity, storages);
+		return ApplyContents(entity, snapshot, manager, storages);
+	}
 
+	//------------------------------------------------------------------------------------------------
+	//! Applies the snapshot's contents to the given storages of the entity (see Apply).
+	protected static bool ApplyContents(notnull IEntity entity, notnull MRX_ItemSnapshot snapshot, notnull InventoryStorageManagerComponent manager, notnull set<BaseInventoryStorageComponent> storages)
+	{
 		bool complete = true;
 		array<string> restoredStorageIds = {};
 		foreach (BaseInventoryStorageComponent storage : storages)
@@ -133,12 +190,12 @@ class MRX_EntitySnapshots
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected static void CaptureInto(notnull IEntity entity, notnull MRX_ItemSnapshot snapshot)
+	//! \param storages Storages of the entity whose contents are captured.
+	//! \param asNew Captures the items as new ones: full magazines, no damage, not issued.
+	protected static void CaptureInto(notnull IEntity entity, notnull MRX_ItemSnapshot snapshot, notnull set<BaseInventoryStorageComponent> storages, bool asNew)
 	{
-		CaptureState(entity, snapshot);
+		CaptureState(entity, snapshot, asNew);
 
-		set<BaseInventoryStorageComponent> storages = new set<BaseInventoryStorageComponent>();
-		FindStorages(entity, storages);
 		foreach (BaseInventoryStorageComponent storage : storages)
 		{
 			string storageId = GetStorageId(entity, storage);
@@ -155,8 +212,32 @@ class MRX_EntitySnapshots
 				child.m_iFormat = 0;
 				child.m_sStorage = storageId;
 				child.m_iSlot = slot.GetID();
-				CaptureInto(childEntity, child);
+				set<BaseInventoryStorageComponent> childStorages = new set<BaseInventoryStorageComponent>();
+				FindStorages(childEntity, childStorages);
+				CaptureInto(childEntity, child, childStorages, asNew);
 				snapshot.m_aChildren.Insert(child);
+			}
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Items of the storage and everything they hold, at any depth.
+	protected static void CollectItems(notnull BaseInventoryStorageComponent storage, notnull array<IEntity> outItems)
+	{
+		array<InventoryItemComponent> items = {};
+		storage.GetOwnedItems(items, false);
+		foreach (InventoryItemComponent item : items)
+		{
+			IEntity owner = item.GetOwner();
+			if (!owner || outItems.Contains(owner))
+				continue;
+
+			outItems.Insert(owner);
+			set<BaseInventoryStorageComponent> storages = new set<BaseInventoryStorageComponent>();
+			FindStorages(owner, storages);
+			foreach (BaseInventoryStorageComponent childStorage : storages)
+			{
+				CollectItems(childStorage, outItems);
 			}
 		}
 	}
@@ -189,11 +270,18 @@ class MRX_EntitySnapshots
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected static void CaptureState(notnull IEntity entity, notnull MRX_ItemSnapshot snapshot)
+	protected static void CaptureState(notnull IEntity entity, notnull MRX_ItemSnapshot snapshot, bool asNew)
 	{
 		BaseMagazineComponent magazine = BaseMagazineComponent.Cast(entity.FindComponent(BaseMagazineComponent));
-		if (magazine)
+		if (magazine && asNew)
+			snapshot.m_iAmmo = magazine.GetMaxAmmoCount();
+		else if (magazine)
 			snapshot.m_iAmmo = magazine.GetAmmoCount();
+
+		if (asNew)
+			return;
+
+		snapshot.m_bIssued = MRX_IssuedItems.IsIssued(entity);
 
 		HitZoneContainerComponent hitZoneContainer = HitZoneContainerComponent.Cast(entity.FindComponent(HitZoneContainerComponent));
 		if (hitZoneContainer)
@@ -222,6 +310,11 @@ class MRX_EntitySnapshots
 	//------------------------------------------------------------------------------------------------
 	protected static void ApplyState(notnull IEntity entity, notnull MRX_ItemSnapshot snapshot)
 	{
+		if (snapshot.m_bIssued)
+			MRX_IssuedItems.Mark(entity, false);
+		else
+			MRX_IssuedItems.Unmark(entity, false);
+
 		BaseMagazineComponent magazine = BaseMagazineComponent.Cast(entity.FindComponent(BaseMagazineComponent));
 		if (magazine && snapshot.m_iAmmo >= 0)
 			magazine.SetAmmoCount(snapshot.m_iAmmo);

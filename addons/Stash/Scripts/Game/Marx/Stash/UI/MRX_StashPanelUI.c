@@ -3,6 +3,56 @@
 //! moved inside the stash, or put in from elsewhere (the move is refused when the cells are taken).
 class MRX_StashPanelUI : SCR_InventoryOpenedStorageUI
 {
+	protected ref MRX_LoadoutBar m_LoadoutBar;
+	protected ref MRX_BalancePanel m_BalancePanel;
+	protected MRX_ClientWallet m_Wallet;
+
+	//------------------------------------------------------------------------------------------------
+	//! Below the items: the loadout slots and the balance (the vicinity panel, which shows it otherwise, is hidden).
+	override void Init()
+	{
+		super.Init();
+		if (!MRX_StashStorageComponent.Cast(m_Storage) || !m_widget)
+			return;
+
+		m_LoadoutBar = MRX_LoadoutBar.Create(m_widget);
+		m_Wallet = MRX_ClientWallet.GetLocal();
+		if (!m_Wallet || !MRX_BalancePanel.IsShownInInventory())
+			return;
+
+		m_BalancePanel = MRX_BalancePanel.Create(m_widget, null);
+		if (m_BalancePanel)
+			m_Wallet.GetOnBalanceChanged().Insert(OnBalanceChanged);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override event void HandlerDeattached(Widget w)
+	{
+		if (m_Wallet)
+			m_Wallet.GetOnBalanceChanged().Remove(OnBalanceChanged);
+
+		if (m_BalancePanel)
+			m_BalancePanel.Stop();
+
+		if (m_LoadoutBar)
+			m_LoadoutBar.Stop();
+
+		super.HandlerDeattached(w);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	MRX_LoadoutBar GetLoadoutBar()
+	{
+		return m_LoadoutBar;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnBalanceChanged(string currency, int balance)
+	{
+		if (m_BalancePanel)
+			m_BalancePanel.OnBalanceChanged(currency, balance);
+	}
+
 	//------------------------------------------------------------------------------------------------
 	int GetShownPage()
 	{
