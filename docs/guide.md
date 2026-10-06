@@ -44,7 +44,7 @@ Marx is split into addons, so you only take what you need:
 | Addon | GUID | Take it when |
 |---|---|---|
 | `Marx_Core` | `6A885105A7EC72B9` | Always. Wallets, stash service, API. No UI. |
-| `Marx_UI` | `6A8A0C05BCEEF932` | Comes with Shop and Stash. Wallet display on the HUD, dialog base. |
+| `Marx_UI` | `6A8A0C05BCEEF932` | Comes with Shop and Stash. Balance panel in the inventory, dialog base. |
 | `Marx_Shop` | `6A885683BA928BB5` | You want shops. |
 | `Marx_Stash` | `6A8A0C37A19F762B` | You want stash points. |
 
@@ -303,7 +303,8 @@ for the stash (`MRX_StashValidator.CanDeposit` / `CanWithdraw`, added with `MRX_
 
 ## Step 8: Show money in your own UI
 
-Marx already shows the balance on the HUD. For your own UI, read the client-side copy of the local player's wallet:
+Marx already shows the balance below the vicinity panel of the inventory (`MRX_BalancePanel`; turn it off with
+`MRX_BalancePanel.SetShownInInventory(false)`). For your own UI, read the client-side copy of the local player's wallet:
 
 ```c
 MRX_ClientWallet wallet = MRX_ClientWallet.GetLocal();

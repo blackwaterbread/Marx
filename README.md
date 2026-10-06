@@ -10,13 +10,14 @@ Status: **API v0** (breaking changes are still possible). Target game version: 1
 | Addon | Project ID | Contents |
 |---|---|---|
 | `addons/Core` | `Marx_Core` | Economy (wallets, ledger), identity, stash and owned assets, storage backends, client wallet mirror, stash point component and RPCs, admin command, public API (`MRX_Marx`) |
-| `addons/UI` | `Marx_UI` | Default UI building blocks: script-built dialog base, wallet HUD |
+| `addons/UI` | `Marx_UI` | Default UI building blocks: script-built dialog base, balance panel in the inventory |
 | `addons/Shop` | `Marx_Shop` | Shops (component, catalogs, buy/sell, RPCs), shop dialog, arsenal shop, sample catalog, shop table and arsenal box prefabs |
 | `addons/Stash` | `Marx_Stash` | Stash in the vanilla inventory: stash point action, personal container, stash wardrobe prefab |
 | `addons/Example` | `Marx_Example` | Example consumer code and the Workbench test harness |
 
 Depend on `Marx_Core` for the API only (no UI). Add `Marx_Shop` and/or `Marx_Stash` for the ready-made shop and
-stash point; both bring `Marx_UI`, which also shows the wallet HUD.
+stash point; both bring `Marx_UI`, which also shows the balances
+in the inventory.
 
 ## Features
 

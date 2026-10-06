@@ -1,11 +1,11 @@
 //! The panel of a Marx arsenal lists the items of one category or matching a search (MRX_ArsenalFilterBar above its
-//! items), shows the local balance and the outcome of trades below its items (MRX_ArsenalBalanceBar), and updates its
+//! items), shows the local balance and the outcome of trades below its items (MRX_BalancePanel), and updates its
 //! slots when the balance changes.
 modded class SCR_InventoryOpenedStorageArsenalUI
 {
 	protected MRX_ClientWallet m_MRX_Wallet;
 	protected SCR_PlayerController m_MRX_Controller;
-	protected ref MRX_ArsenalBalanceBar m_MRX_BalanceBar;
+	protected ref MRX_BalancePanel m_MRX_BalanceBar;
 	protected ref MRX_ArsenalFilter m_MRX_Filter;
 	protected ref MRX_ArsenalFilterBar m_MRX_FilterBar;
 
@@ -40,7 +40,7 @@ modded class SCR_InventoryOpenedStorageArsenalUI
 		if (m_MRX_FilterBar)
 			m_MRX_FilterBar.GetOnChanged().Insert(MRX_OnFilterChanged);
 
-		m_MRX_BalanceBar = MRX_ArsenalBalanceBar.Create(m_widget, arsenal);
+		m_MRX_BalanceBar = MRX_BalancePanel.Create(m_widget, arsenal.GetCurrencies());
 		m_MRX_Wallet = MRX_ClientWallet.GetLocal();
 		if (m_MRX_Wallet)
 			m_MRX_Wallet.GetOnBalanceChanged().Insert(MRX_OnBalanceChanged);

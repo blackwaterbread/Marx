@@ -1,7 +1,8 @@
-//! Balance panel below the items of a Marx arsenal: a dark box with a thin frame and an accent stripe, a small coloured
-//! "BALANCE" title and the balance in large bold letters. Trades show here too: the balance counts to its new value, the
-//! change ("-$20", "+$510") lights up next to it, and failures or details of a sale show in a line below. Internal.
-class MRX_ArsenalBalanceBar : Managed
+//! Balance panel below the items of an inventory panel (API v0): a dark box with a thin frame and an accent stripe, a
+//! small coloured "BALANCE" title and the balances in large bold letters. A change counts to the new value and lights up
+//! next to it ("-$20", "+$510"); ShowInfo adds a line below, e.g. for failures. The inventory's vicinity panel shows one
+//! with every currency of the local wallet (see SetShownInInventory), Marx arsenals one with their currencies. Client.
+class MRX_BalancePanel : Managed
 {
 	//! Vertical layout of a storage panel: header, title, item grid, pages.
 	protected static const string PANEL_CONTAINER = "Container";
@@ -16,7 +17,12 @@ class MRX_ArsenalBalanceBar : Managed
 	protected static const int FEEDBACK_MS = 3000;
 	protected static const float FADE_SPEED = 2;
 
-	protected MRX_ArsenalShopComponent m_Arsenal;
+	protected static bool s_bHiddenInInventory;
+
+	//! Shown currencies in order.
+	protected ref array<string> m_aCurrencies = {};
+	//! Shows every currency of the local wallet, adding new ones as their balances arrive.
+	protected bool m_bAllCurrencies;
 	protected TextWidget m_wAmount;
 	protected TextWidget m_wChange;
 	protected TextWidget m_wInfo;
@@ -28,9 +34,25 @@ class MRX_ArsenalBalanceBar : Managed
 	protected int m_iCountStep = -1;
 
 	//------------------------------------------------------------------------------------------------
-	//! Adds the panel below the item grid and pages of a storage panel.
+	//! Whether the inventory's vicinity panel shows the local balances. Mods with their own balance display turn it off
+	//! (on every machine).
+	static void SetShownInInventory(bool shown)
+	{
+		s_bHiddenInInventory = !shown;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	static bool IsShownInInventory()
+	{
+		return !s_bHiddenInInventory;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Adds the panel below the item grid and pages of a storage panel. The caller passes the balance changes of the
+	//! local wallet to OnBalanceChanged and calls Stop when the storage panel closes.
+	//! \param currencies Shown currencies in this order; null for every currency of the local wallet.
 	//! \return Null when the panel has an unexpected layout.
-	static MRX_ArsenalBalanceBar Create(Widget panelRoot, notnull MRX_ArsenalShopComponent arsenal)
+	static MRX_BalancePanel Create(Widget panelRoot, array<string> currencies)
 	{
 		if (!panelRoot)
 			return null;
@@ -39,12 +61,16 @@ class MRX_ArsenalBalanceBar : Managed
 		if (!container)
 			return null;
 
-		MRX_ArsenalBalanceBar bar = new MRX_ArsenalBalanceBar();
-		bar.m_Arsenal = arsenal;
-		bar.Build(container);
-		bar.ReadBalances();
-		bar.UpdateAmount();
-		return bar;
+		MRX_BalancePanel panel = new MRX_BalancePanel();
+		if (currencies)
+			panel.m_aCurrencies.Copy(currencies);
+		else
+			panel.m_bAllCurrencies = true;
+
+		panel.Build(container);
+		panel.ReadBalances();
+		panel.UpdateAmount();
+		return panel;
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -57,10 +83,18 @@ class MRX_ArsenalBalanceBar : Managed
 	//! A balance changed: count to the new value and show the change.
 	void OnBalanceChanged(string currency, int balance)
 	{
+		if (!m_aCurrencies.Contains(currency))
+		{
+			if (!m_bAllCurrencies)
+				return;
+
+			m_aCurrencies.Insert(currency);
+		}
+
 		int previous;
 		bool known = m_mBalances.Find(currency, previous);
 		m_mBalances.Set(currency, balance);
-		if (!known || balance == previous || !m_Arsenal.GetCurrencies().Contains(currency))
+		if (!known || balance == previous)
 		{
 			m_mShown.Set(currency, balance);
 			UpdateAmount();
@@ -132,7 +166,10 @@ class MRX_ArsenalBalanceBar : Managed
 	protected void ReadBalances()
 	{
 		MRX_ClientWallet wallet = MRX_ClientWallet.GetLocal();
-		foreach (string currency : m_Arsenal.GetCurrencies())
+		if (wallet && m_bAllCurrencies)
+			wallet.GetCurrencies(m_aCurrencies);
+
+		foreach (string currency : m_aCurrencies)
 		{
 			int balance;
 			if (wallet && wallet.TryGetBalance(currency, balance))
@@ -223,7 +260,7 @@ class MRX_ArsenalBalanceBar : Managed
 			return;
 
 		string text;
-		foreach (string currency : m_Arsenal.GetCurrencies())
+		foreach (string currency : m_aCurrencies)
 		{
 			int shown;
 			m_mShown.Find(currency, shown);

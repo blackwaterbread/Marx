@@ -119,10 +119,12 @@ ms per item, spread over frames; run it in Workbench or a test, not on a live se
   previous and next buttons, so large catalogs stay responsive; the category buttons wrap after six per row.
 - Built on `MRX_ScriptedDialog` (`Marx_UI`) from vanilla parts in script (the wide configurable dialog, widget
   library buttons and toolbox, the dialog scroll area, inventory item slots), so no Marx layout asset is needed.
-- `MRX_WalletHud` (`Marx_UI`): balances in the top right corner of the HUD with a short change hint. Mods with their
-  own HUD call `MRX_WalletHud.SetEnabled(false)` and use `MRX_ClientWallet` instead.
+- `MRX_BalancePanel` (`Marx_UI`): the player's balances in large letters below the items of the inventory's vicinity
+  panel (every currency of the wallet) and of a Marx arsenal (its currencies). A change counts to the new value and
+  briefly shows the difference ("+$6,000"). Mods with their own balance display call
+  `MRX_BalancePanel.SetShownInInventory(false)` on every machine and use `MRX_ClientWallet` instead.
 - `MRX_TextFormat` (`Marx_UI`): amounts with thousands separators (`Amount(12500)` = "12,500", `Money(12500, "cash")` =
-  "12,500 cash"), as the shop window and the wallet HUD show them. Mods can use it in their own UI.
+  "12,500 cash"), as the shop window and the balance panel show them. Mods can use it in their own UI.
   `MRX_TextFormat.SetCurrencyFormat("cash", "$%1")` changes how a currency is shown ("$12,500") on the machine that
   calls it; storage and the API keep the currency ID. Call it on every machine, e.g. in your game mode's `EOnInit`.
   `AmountCompact` and `MoneyCompact` fit amounts in four characters for narrow places ("14k", "$1.5k").
