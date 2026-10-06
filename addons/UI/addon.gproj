@@ -3,7 +3,81 @@ GameProject {
  GUID "6A8A0C05BCEEF932"
  TITLE "Marx UI"
  Dependencies {
-  "58D0FB3206B6F859"
-  "6A885105A7EC72B9"
+  "58D0FB3206B6F859" "6A885105A7EC72B9"
+ }
+ Configurations {
+  GameProjectConfig PC {
+   WidgetManagerSettings WidgetManagerSettings "{AC4BE58770485E02}" {
+    StringTables {
+     StringTableDefinition "{6A8E32FE0D5F41CA}" {
+      StringTableSource "{2FC0470050D04F73}Language/MRX_localization.st"
+      Languages {
+       LanguageDefinition "{6A8E32FE1AE8767D}" {
+        Code "cs_cz"
+        StringTableRuntime "{99A336BAE306EEA0}Language/MRX_localization.cs_cz.conf"
+       }
+       LanguageDefinition "{6A8E32FE1AE879B8}" {
+        Code "de_de"
+        StringTableRuntime "{4CDD2C89F0A5FF80}Language/MRX_localization.de_de.conf"
+       }
+       LanguageDefinition "{6A8E32FE1AE879A8}" {
+        Code "en_us"
+        StringTableRuntime "{122DA6C29A56FA81}Language/MRX_localization.en_us.conf"
+       }
+       LanguageDefinition "{6A8E32FE1AE879D8}" {
+        Code "es_es"
+        StringTableRuntime "{D761EB4B7454919E}Language/MRX_localization.es_es.conf"
+       }
+       LanguageDefinition "{6A8E32FE1AE879C8}" {
+        Code "fr_fr"
+        StringTableRuntime "{6CC91E7C92D7729C}Language/MRX_localization.fr_fr.conf"
+       }
+       LanguageDefinition "{6A8E32FE1AE879E0}" {
+        Code "it_it"
+        StringTableRuntime "{ECD591483FF5F165}Language/MRX_localization.it_it.conf"
+       }
+       LanguageDefinition "{6A8E32FE1AE87911}" {
+        Code "ja_jp"
+        StringTableRuntime "{FCCE2CDA0184C1CE}Language/MRX_localization.ja_jp.conf"
+       }
+       LanguageDefinition "{6A8E32FE1AE87902}" {
+        Code "ko_kr"
+        StringTableRuntime "{5C70047692A9C2F1}Language/MRX_localization.ko_kr.conf"
+       }
+       LanguageDefinition "{6A8E32FE1AE87932}" {
+        Code "pl_pl"
+        StringTableRuntime "{0001A28C2C465E8D}Language/MRX_localization.pl_pl.conf"
+       }
+       LanguageDefinition "{6A8E32FE1AE87922}" {
+        Code "pt_br"
+        StringTableRuntime "{D576384017B89437}Language/MRX_localization.pt_br.conf"
+       }
+       LanguageDefinition "{6A8E32FE1AE87950}" {
+        Code "ru_ru"
+        StringTableRuntime "{80372CE88AC1F141}Language/MRX_localization.ru_ru.conf"
+       }
+       LanguageDefinition "{6A8E32FE1AE87BB2}" {
+        Code "uk_ua"
+        StringTableRuntime "{0A6F791EE6EF4F14}Language/MRX_localization.uk_ua.conf"
+       }
+       LanguageDefinition "{6A8E32FE1AE87BC7}" {
+        Code "zh_cn"
+        StringTableRuntime "{D0DF1723DF4F9F09}Language/MRX_localization.zh_cn.conf"
+       }
+      }
+     }
+    }
+   }
+  }
+  GameProjectConfig XBOX_ONE {
+  }
+  GameProjectConfig XBOX_SERIES {
+  }
+  GameProjectConfig PS4 {
+  }
+  GameProjectConfig PS5 {
+  }
+  GameProjectConfig HEADLESS {
+  }
  }
 }

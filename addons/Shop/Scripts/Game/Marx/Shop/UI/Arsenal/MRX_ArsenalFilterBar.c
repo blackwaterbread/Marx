@@ -85,9 +85,9 @@ class MRX_ArsenalFilterBar : Managed
 			return;
 
 		if (count == 1)
-			m_wCount.SetText("1 item");
+			m_wCount.SetText("#MRX-Arsenal_OneItem");
 		else
-			m_wCount.SetText(string.Format("%1 items", count));
+			m_wCount.SetText(WidgetManager.Translate("#MRX-Arsenal_Items", count));
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -271,7 +271,7 @@ class MRX_ArsenalFilterBar : Managed
 		AlignableSlot.SetHorizontalAlign(column, LayoutHorizontalAlign.Stretch);
 		AlignableSlot.SetPadding(column, 1, 1, 1, 1);
 
-		AddEntry(column, string.Empty, "All", m_iTotal);
+		AddEntry(column, string.Empty, "#MRX-Shop_All", m_iTotal);
 		foreach (string category : m_aCategories)
 		{
 			AddEntry(column, category, category, m_mCounts.Get(category));
@@ -339,7 +339,7 @@ class MRX_ArsenalFilterBar : Managed
 
 		string category = m_Filter.GetCategory();
 		if (category.IsEmpty())
-			m_wCategoryText.SetText("All");
+			m_wCategoryText.SetText("#MRX-Shop_All");
 		else
 			m_wCategoryText.SetText(category);
 	}

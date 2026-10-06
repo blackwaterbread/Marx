@@ -192,9 +192,9 @@ modded class SCR_InventoryOpenedStorageArsenalUI
 		if (itemCount <= 1 && unpaidCount == 0)
 			return;
 
-		string text = string.Format("%1 items sold", itemCount);
+		string text = WidgetManager.Translate("#MRX-Arsenal_Sold", itemCount);
 		if (unpaidCount > 0)
-			text += string.Format(", %1 not bought back", unpaidCount);
+			text += WidgetManager.Translate("#MRX-Arsenal_NotBoughtBack", unpaidCount);
 
 		m_MRX_BalanceBar.ShowInfo(text, false);
 	}

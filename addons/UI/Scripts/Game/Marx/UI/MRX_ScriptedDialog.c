@@ -42,7 +42,7 @@ class MRX_ScriptedDialog : SCR_ConfigurableDialogUi
 		SCR_ConfigurableDialogUiButtonPreset closeButton = new SCR_ConfigurableDialogUiButtonPreset();
 		closeButton.m_sTag = BUTTON_CANCEL;
 		closeButton.m_sActionName = "MenuBack";
-		closeButton.m_sLabel = "Close";
+		closeButton.m_sLabel = "#MRX-UI_Close";
 		closeButton.m_sSoundHovered = SCR_SoundEvent.SOUND_FE_BUTTON_HOVER;
 		closeButton.m_sSoundClicked = SCR_SoundEvent.CLICK;
 		closeButton.m_bShowButton = true;

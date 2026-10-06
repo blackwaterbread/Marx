@@ -140,10 +140,10 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 		Widget tabs = CreateLayout(WidgetType.HorizontalLayoutWidgetTypeID, m_wHeader);
 		AlignableSlot.SetHorizontalAlign(tabs, LayoutHorizontalAlign.Stretch);
 		AlignableSlot.SetPadding(tabs, 0, 10, 0, 6);
-		m_BuyTab = CreateTab(tabs, "BUY");
+		m_BuyTab = CreateTab(tabs, "#MRX-Shop_Buy");
 		if (m_Definition.m_bAllowSell)
 		{
-			m_SellTab = CreateTab(tabs, "SELL");
+			m_SellTab = CreateTab(tabs, "#MRX-Shop_Sell");
 			AlignableSlot.SetPadding(m_SellTab.GetRootWidget(), 6, 0, 0, 0);
 		}
 
@@ -215,7 +215,7 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 
 		Widget column = MRX_UIStyle.CreateWidget(WidgetType.VerticalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), row);
 		LayoutSlot.SetSizeMode(column, LayoutSizeMode.Fill);
-		MRX_UIStyle.CreateText(column, "BALANCE", LABEL_FONT_SIZE, MRX_UIStyle.GetAccentColor(), true);
+		MRX_UIStyle.CreateText(column, "#MRX-UI_Balance", LABEL_FONT_SIZE, MRX_UIStyle.GetAccentColor(), true);
 		m_wBalance = MRX_UIStyle.CreateText(column, string.Empty, BALANCE_FONT_SIZE, Color.FromInt(Color.WHITE), true);
 
 		m_wStatus = MRX_UIStyle.CreateText(row, string.Empty, DETAIL_FONT_SIZE + 1, MRX_UIStyle.GetMutedColor(), true);
@@ -234,7 +234,7 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 	//! "All" and the catalog's categories, when it has more than one.
 	protected void CreateCategoryFilter()
 	{
-		m_aCategories.Insert("All");
+		m_aCategories.Insert("#MRX-Shop_All");
 		foreach (MRX_ShopItem item : m_Definition.m_Catalog.m_aItems)
 		{
 			if (item.m_iPrice > 0 && !item.m_sCategory.IsEmpty() && !m_aCategories.Contains(item.m_sCategory))
@@ -308,21 +308,21 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 			bool affordable = CanAfford(shown.m_sCurrency, shown.m_iPrice);
 			// Items without a state from the server (all but products) are always available.
 			bool available = !m_mAvailable.Contains(shown.m_sId) || m_mAvailable.Get(shown.m_sId);
-			string state = m_mStateTexts.Get(shown.m_sId);
+			string state = MRX_TextFormat.Localize(m_mStateTexts.Get(shown.m_sId));
 			string detail = shown.m_sCategory;
 			if (!shown.m_sDescription.IsEmpty())
 				detail = WidgetManager.Translate(shown.m_sDescription);
 
-			string buttonText = "BUY";
+			string buttonText = "#MRX-Shop_Buy";
 			if (!available)
-				buttonText = "MAX";
+				buttonText = "#MRX-Shop_Max";
 
 			ItemPreviewWidget preview = AddItemRow(GetItemName(shown), detail, state, FormatPrice(shown.m_iPrice, shown.m_sCurrency), GetPriceColor(affordable), affordable && available, buttonText, "buy:" + shown.m_sId);
 			ShowPrefabPreview(preview, shown.m_sPrefab);
 		}
 
 		if (m_iRowCount == 0)
-			MRX_UIStyle.CreateText(m_wList, "Nothing for sale here.", NAME_FONT_SIZE, MRX_UIStyle.GetMutedColor());
+			MRX_UIStyle.CreateText(m_wList, "#MRX-Shop_NothingForSale", NAME_FONT_SIZE, MRX_UIStyle.GetMutedColor());
 
 		BuildPager();
 	}
@@ -340,7 +340,7 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 		previous.SetEnabled(m_iPage > 0);
 		m_aListButtons.Insert(previous);
 
-		TextWidget pageText = MRX_UIStyle.CreateText(m_wPager, string.Format("PAGE %1 / %2", m_iPage + 1, m_iPageCount), LABEL_FONT_SIZE + 1, MRX_UIStyle.GetMutedColor(), true);
+		TextWidget pageText = MRX_UIStyle.CreateText(m_wPager, WidgetManager.Translate("#MRX-Shop_Page", m_iPage + 1, m_iPageCount), LABEL_FONT_SIZE + 1, MRX_UIStyle.GetMutedColor(), true);
 		AlignableSlot.SetVerticalAlign(pageText, LayoutVerticalAlign.Center);
 		AlignableSlot.SetPadding(pageText, 14, 0, 14, 0);
 
@@ -374,12 +374,12 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 				name = GetItemName(sellable);
 
 			int index = m_aSellItems.Insert(entity);
-			ItemPreviewWidget preview = AddItemRow(name, sellable.m_sCategory, string.Empty, "+" + FormatPrice(sellPrice, sellable.m_sCurrency), MRX_UIStyle.GetIncreaseColor(), true, "SELL", "sell:" + index.ToString());
+			ItemPreviewWidget preview = AddItemRow(name, sellable.m_sCategory, string.Empty, "+" + FormatPrice(sellPrice, sellable.m_sCurrency), MRX_UIStyle.GetIncreaseColor(), true, "#MRX-Shop_Sell", "sell:" + index.ToString());
 			ShowItemPreview(preview, entity);
 		}
 
 		if (m_iRowCount == 0)
-			MRX_UIStyle.CreateText(m_wList, "You carry nothing this shop buys.", NAME_FONT_SIZE, MRX_UIStyle.GetMutedColor());
+			MRX_UIStyle.CreateText(m_wList, "#MRX-Shop_NothingToSell", NAME_FONT_SIZE, MRX_UIStyle.GetMutedColor());
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -527,9 +527,9 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 		if (status == MRX_EShopStatus.OK)
 		{
 			if (m_bPendingSell)
-				ShowStatus(string.Format("Sold %1 for %2", m_sPendingName, FormatPrice(price, currency)), true);
+				ShowStatus(WidgetManager.Translate("#MRX-Shop_Sold", m_sPendingName, FormatPrice(price, currency)), true);
 			else
-				ShowStatus(string.Format("Bought %1 for %2", m_sPendingName, FormatPrice(price, currency)), true);
+				ShowStatus(WidgetManager.Translate("#MRX-Shop_Bought", m_sPendingName, FormatPrice(price, currency)), true);
 		}
 		else
 		{
@@ -614,22 +614,22 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 			case MRX_EShopStatus.PAYMENT_FAILED:
 			{
 				if (txStatus == MRX_ETxStatus.INSUFFICIENT_FUNDS)
-					return "Not enough money";
+					return "#MRX-Common_NotEnoughMoney";
 
-				return "Payment failed";
+				return "#MRX-Common_PaymentFailed";
 			}
 
-			case MRX_EShopStatus.NO_SPACE: return "No room in your inventory";
-			case MRX_EShopStatus.TOO_FAR: return "Too far from the shop";
-			case MRX_EShopStatus.NOT_EMPTY: return "Empty it first (attachments, magazines, contents)";
-			case MRX_EShopStatus.BUSY: return "Please wait";
-			case MRX_EShopStatus.NOT_BUYABLE: return "The shop does not buy this";
-			case MRX_EShopStatus.ISSUED: return "Issued gear is not bought back";
-			case MRX_EShopStatus.LIMIT_REACHED: return "Already at the maximum";
-			case MRX_EShopStatus.DELIVERY_FAILED: return "Could not hand the item over; refunded";
+			case MRX_EShopStatus.NO_SPACE: return "#MRX-Common_NoSpace";
+			case MRX_EShopStatus.TOO_FAR: return "#MRX-Shop_TooFar";
+			case MRX_EShopStatus.NOT_EMPTY: return "#MRX-Shop_NotEmpty";
+			case MRX_EShopStatus.BUSY: return "#MRX-Common_PleaseWait";
+			case MRX_EShopStatus.NOT_BUYABLE: return "#MRX-Shop_NotBuyable";
+			case MRX_EShopStatus.ISSUED: return "#MRX-Shop_Issued";
+			case MRX_EShopStatus.LIMIT_REACHED: return "#MRX-Shop_LimitReached";
+			case MRX_EShopStatus.DELIVERY_FAILED: return "#MRX-Shop_DeliveryFailed";
 		}
 
-		return "Failed: " + typename.EnumToString(MRX_EShopStatus, status);
+		return WidgetManager.Translate("#MRX-Common_Failed", typename.EnumToString(MRX_EShopStatus, status));
 	}
 
 	//------------------------------------------------------------------------------------------------

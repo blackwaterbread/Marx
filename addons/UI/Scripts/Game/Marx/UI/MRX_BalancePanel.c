@@ -149,7 +149,7 @@ class MRX_BalancePanel : Managed
 		AlignableSlot.SetHorizontalAlign(column, LayoutHorizontalAlign.Stretch);
 		AlignableSlot.SetPadding(column, 16 + ACCENT_WIDTH, 8, 16, 10);
 
-		CreateText(column, TITLE_FONT_SIZE, GetAccentColor()).SetText("BALANCE");
+		CreateText(column, TITLE_FONT_SIZE, GetAccentColor()).SetText("#MRX-UI_Balance");
 
 		Widget row = CreateWidget(WidgetType.HorizontalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), column);
 		m_wAmount = CreateText(row, AMOUNT_FONT_SIZE, Color.FromInt(Color.WHITE));

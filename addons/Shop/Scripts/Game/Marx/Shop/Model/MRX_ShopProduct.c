@@ -33,7 +33,8 @@ class MRX_ShopProductState : Managed
 {
 	//! False: the window shows the product but its Buy button is off.
 	bool m_bAvailable = true;
-	//! E.g. "4 / 8 pages". Empty: nothing shown.
+	//! E.g. "4 / 8 pages". Empty: nothing shown. Built on the server, so use MRX_TextFormat.PackLocalized() for a
+	//! translated text.
 	string m_sText;
 
 	//------------------------------------------------------------------------------------------------

@@ -80,7 +80,7 @@ class MRX_ShopComponent : ScriptComponent
 		if (!m_sDisplayName.IsEmpty())
 			return m_sDisplayName;
 
-		return "Shop";
+		return "#MRX-Shop_Title";
 	}
 
 	//------------------------------------------------------------------------------------------------

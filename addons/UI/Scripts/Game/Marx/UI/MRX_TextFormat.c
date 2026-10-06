@@ -3,6 +3,7 @@ class MRX_TextFormat
 {
 	//! Display formats by currency ID, set by the consumer on each machine.
 	protected static ref map<string, string> s_mCurrencyFormats;
+	protected static const string LOCALIZED_SEPARATOR = "|";
 
 	//------------------------------------------------------------------------------------------------
 	//! Whole number with thousands separators, e.g. 1234567 -> "1,234,567", -2500 -> "-2,500".
@@ -115,5 +116,27 @@ class MRX_TextFormat
 			s_mCurrencyFormats.Remove(currency);
 		else
 			s_mCurrencyFormats.Set(currency, format);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Text the server builds for clients that may use other languages, e.g. a product state: a string table key and
+	//! the values of its %1, %2... (at most 9), translated by Localize() on each client.
+	static string PackLocalized(string key, notnull array<string> args)
+	{
+		return key + LOCALIZED_SEPARATOR + SCR_StringHelper.Join(LOCALIZED_SEPARATOR, args);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Translates a text made by PackLocalized(). Other texts are returned unchanged (a plain "#key" is translated
+	//! when a widget shows it).
+	static string Localize(string text)
+	{
+		if (!text.StartsWith("#") || !text.Contains(LOCALIZED_SEPARATOR))
+			return text;
+
+		array<string> parts = {};
+		text.Split(LOCALIZED_SEPARATOR, parts, false);
+		parts.Resize(10);
+		return WidgetManager.Translate(parts[0], parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7], parts[8], parts[9]);
 	}
 }

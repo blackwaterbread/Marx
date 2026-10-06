@@ -30,12 +30,12 @@ class MRX_SampleAssetsPlugin : WorldEditorPlugin
 			map<string, string> shopValues = new map<string, string>();
 			shopValues.Set("m_sShopId", "sample");
 			shopValues.Set("m_sCatalog", catalog);
-			CreateInteractivePrefab(SHOP_PREFAB_FILE, SHOP_BASE_PREFAB, "MRX_ShopComponent", shopValues, "MRX_Shop", "MRX_OpenShopAction", "Trade", "0 0.9 0", false);
+			CreateInteractivePrefab(SHOP_PREFAB_FILE, SHOP_BASE_PREFAB, "MRX_ShopComponent", shopValues, "MRX_Shop", "MRX_OpenShopAction", "#MRX-Shop_Trade", "0 0.9 0", false);
 			CreateArsenalPrefab(catalog);
 		}
 
 		// The wardrobe mesh spans x -1.5..0, y 0..2, z 0..0.76 from its origin: the action sits in its middle.
-		CreateInteractivePrefab(STASH_PREFAB_FILE, STASH_BASE_PREFAB, "MRX_StashPointComponent", new map<string, string>(), "MRX_Stash", "MRX_OpenStashAction", "Stash", "-0.75 1 0.38", true);
+		CreateInteractivePrefab(STASH_PREFAB_FILE, STASH_BASE_PREFAB, "MRX_StashPointComponent", new map<string, string>(), "MRX_Stash", "MRX_OpenStashAction", "#MRX-Stash_Title", "-0.75 1 0.38", true);
 		CreateStashContainerPrefab();
 		Print(TAG + "sample assets done");
 	}
@@ -203,7 +203,7 @@ class MRX_SampleAssetsPlugin : WorldEditorPlugin
 		array<ref ContainerIdPathEntry> shopPath = { new ContainerIdPathEntry("MRX_ShopComponent") };
 		Log("MRX_ShopComponent", api.CreateComponent(source, "MRX_ShopComponent") != null);
 		Log("m_sShopId", api.SetVariableValue(source, shopPath, "m_sShopId", "sample_arsenal"));
-		Log("m_sDisplayName", api.SetVariableValue(source, shopPath, "m_sDisplayName", "Arsenal"));
+		Log("m_sDisplayName", api.SetVariableValue(source, shopPath, "m_sDisplayName", "#MRX-Shop_Arsenal"));
 		Log("m_sCatalog", api.SetVariableValue(source, shopPath, "m_sCatalog", catalog));
 		Log("MRX_ArsenalShopComponent", api.CreateComponent(source, "MRX_ArsenalShopComponent") != null);
 
@@ -268,7 +268,7 @@ class MRX_SampleAssetsPlugin : WorldEditorPlugin
 		array<ref ContainerIdPathEntry> attributesPath = { new ContainerIdPathEntry("MRX_StashStorageComponent"), new ContainerIdPathEntry("Attributes") };
 		Log("ItemDisplayName", api.CreateObjectVariableMember(source, attributesPath, "ItemDisplayName", "UIInfo"));
 		array<ref ContainerIdPathEntry> namePath = { new ContainerIdPathEntry("MRX_StashStorageComponent"), new ContainerIdPathEntry("Attributes"), new ContainerIdPathEntry("ItemDisplayName") };
-		Log("ItemDisplayName.Name", api.SetVariableValue(source, namePath, "Name", "Stash"));
+		Log("ItemDisplayName.Name", api.SetVariableValue(source, namePath, "Name", "#MRX-Stash_Title"));
 		Log("ItemPhysAttributes", api.CreateObjectVariableMember(source, attributesPath, "ItemPhysAttributes", "ItemPhysicalAttributes"));
 
 		Log("MRX_StashContainerManagerComponent", api.CreateComponent(source, "MRX_StashContainerManagerComponent") != null);

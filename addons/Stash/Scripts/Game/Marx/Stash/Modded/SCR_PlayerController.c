@@ -318,7 +318,24 @@ modded class SCR_PlayerController
 	protected void MRX_OnStashResultHint(MRX_EStashStatus status, string assetId)
 	{
 		if (status != MRX_EStashStatus.OK)
-			SCR_HintManagerComponent.ShowCustomHint(typename.EnumToString(MRX_EStashStatus, status), "Stash", 4);
+			SCR_HintManagerComponent.ShowCustomHint(MRX_GetStashFailureText(status), "#MRX-Stash_Title", 4);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected static string MRX_GetStashFailureText(MRX_EStashStatus status)
+	{
+		switch (status)
+		{
+			case MRX_EStashStatus.OWNER_NOT_READY: return "#MRX-Common_OwnerNotReady";
+			case MRX_EStashStatus.STASH_FULL: return "#MRX-Stash_Full";
+			case MRX_EStashStatus.NO_SPACE: return "#MRX-Common_NoSpace";
+			case MRX_EStashStatus.BUSY: return "#MRX-Common_PleaseWait";
+			case MRX_EStashStatus.REJECTED: return "#MRX-Stash_Rejected";
+			case MRX_EStashStatus.NOT_OWNED: return "#MRX-Stash_NotOwned";
+			case MRX_EStashStatus.NOT_IN_INVENTORY: return "#MRX-Stash_NotStorable";
+		}
+
+		return WidgetManager.Translate("#MRX-Common_Failed", typename.EnumToString(MRX_EStashStatus, status));
 	}
 
 	//------------------------------------------------------------------------------------------------

@@ -109,10 +109,10 @@ class MRX_LoadoutBar : Managed
 		Widget header = CreateWidget(WidgetType.HorizontalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), column, DECOR);
 		AlignableSlot.SetHorizontalAlign(header, LayoutHorizontalAlign.Stretch);
 		TextWidget title = CreateText(header, BOLD_FONT, TITLE_FONT_SIZE, MRX_UIStyle.GetAccentColor());
-		title.SetText("LOADOUTS");
+		title.SetText("#MRX-Loadout_Title");
 		LayoutSlot.SetSizeMode(title, LayoutSizeMode.Fill);
 		TextWidget hint = CreateText(header, REGULAR_FONT, DETAIL_FONT_SIZE, MRX_UIStyle.GetMutedColor());
-		hint.SetText("Hold a button to use it");
+		hint.SetText("#MRX-Loadout_HoldHint");
 		LayoutSlot.SetVerticalAlign(hint, LayoutVerticalAlign.Center);
 
 		m_wRows = CreateWidget(WidgetType.VerticalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), column, CONTAINER);
@@ -165,13 +165,13 @@ class MRX_LoadoutBar : Managed
 			m_aNames.Insert(CreateText(texts, BOLD_FONT, NAME_FONT_SIZE, Color.FromInt(Color.WHITE)));
 			m_aDetails.Insert(CreateText(texts, REGULAR_FONT, DETAIL_FONT_SIZE, MRX_UIStyle.GetMutedColor()));
 
-			MRX_HoldButton save = MRX_HoldButton.Create(row, "SAVE", SAVE_WIDTH);
+			MRX_HoldButton save = MRX_HoldButton.Create(row, "#MRX-Loadout_Save", SAVE_WIDTH);
 			LayoutSlot.SetVerticalAlign(save.GetRootWidget(), LayoutVerticalAlign.Center);
 			AlignableSlot.SetPadding(save.GetRootWidget(), 8, 0, 0, 0);
 			save.GetOnHeld().Insert(OnHeld);
 			m_aSaveButtons.Insert(save);
 
-			MRX_HoldButton load = MRX_HoldButton.Create(row, "LOAD", LOAD_WIDTH);
+			MRX_HoldButton load = MRX_HoldButton.Create(row, "#MRX-Loadout_Load", LOAD_WIDTH);
 			LayoutSlot.SetVerticalAlign(load.GetRootWidget(), LayoutVerticalAlign.Center);
 			AlignableSlot.SetPadding(load.GetRootWidget(), 6, 0, 0, 0);
 			load.GetOnHeld().Insert(OnHeld);
@@ -199,19 +199,19 @@ class MRX_LoadoutBar : Managed
 			bool saved = !mainItems[slot].IsEmpty();
 			if (!saved)
 			{
-				m_aNames[slot].SetText("Empty");
+				m_aNames[slot].SetText("#MRX-Loadout_Empty");
 				m_aNames[slot].SetColor(MRX_UIStyle.GetMutedColor());
-				m_aDetails[slot].SetText("Save what you wear and carry");
-				m_aLoadButtons[slot].SetLabel("LOAD");
+				m_aDetails[slot].SetText("#MRX-Loadout_EmptyHint");
+				m_aLoadButtons[slot].SetLabel("#MRX-Loadout_Load");
 				m_aLoadButtons[slot].SetEnabled(false);
 				continue;
 			}
 
 			m_aNames[slot].SetText(MRX_ScriptedDialog.GetItemDisplayName(mainItems[slot]));
 			m_aNames[slot].SetColor(Color.FromInt(Color.WHITE));
-			string detail = string.Format("%1 items", itemCounts[slot]);
+			string detail = WidgetManager.Translate("#MRX-Loadout_Items", itemCounts[slot]);
 			if (unavailable[slot] > 0)
-				detail += string.Format(", %1 not for sale", unavailable[slot]);
+				detail += WidgetManager.Translate("#MRX-Loadout_NotForSale", unavailable[slot]);
 
 			m_aDetails[slot].SetText(detail);
 			m_aLoadButtons[slot].SetLabel(GetLoadLabel(nets[slot]));
@@ -223,12 +223,12 @@ class MRX_LoadoutBar : Managed
 	protected string GetLoadLabel(int net)
 	{
 		if (net > 0)
-			return "LOAD  " + MRX_TextFormat.Money(net, m_sCurrency);
+			return WidgetManager.Translate("#MRX-Loadout_LoadCost", MRX_TextFormat.Money(net, m_sCurrency));
 
 		if (net < 0)
-			return "LOAD  +" + MRX_TextFormat.Money(-net, m_sCurrency);
+			return WidgetManager.Translate("#MRX-Loadout_LoadRefund", MRX_TextFormat.Money(-net, m_sCurrency));
 
-		return "LOAD  FREE";
+		return "#MRX-Loadout_LoadFree";
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -242,7 +242,7 @@ class MRX_LoadoutBar : Managed
 		{
 			m_bLastLoad = false;
 			m_Controller.MRX_RequestLoadoutSave(slot);
-			ShowInfo(string.Format("Saving loadout %1...", slot + 1), false);
+			ShowInfo(WidgetManager.Translate("#MRX-Loadout_Saving", slot + 1), false);
 			return;
 		}
 
@@ -251,7 +251,7 @@ class MRX_LoadoutBar : Managed
 		{
 			m_bLastLoad = true;
 			m_Controller.MRX_RequestLoadoutLoad(slot);
-			ShowInfo(string.Format("Putting on loadout %1...", slot + 1), false);
+			ShowInfo(WidgetManager.Translate("#MRX-Loadout_PuttingOn", slot + 1), false);
 		}
 	}
 
@@ -265,34 +265,34 @@ class MRX_LoadoutBar : Managed
 			case MRX_ELoadoutStatus.OK:
 			{
 				if (!m_bLastLoad)
-					text = string.Format("Loadout %1 saved", slot + 1);
+					text = WidgetManager.Translate("#MRX-Loadout_Saved", slot + 1);
 				else
-					text = string.Format("Loadout %1 on: %2", slot + 1, GetChangeText(net, currency));
+					text = WidgetManager.Translate("#MRX-Loadout_PutOn", slot + 1, GetChangeText(net, currency));
 
 				if (unavailable > 0)
-					text += string.Format(" (%1 items not for sale left out)", unavailable);
+					text += " " + WidgetManager.Translate("#MRX-Loadout_LeftOut", unavailable);
 
 				break;
 			}
 
-			case MRX_ELoadoutStatus.INCOMPLETE: text = string.Format("Loadout %1 only partly put on: %2, the rest refunded", slot + 1, GetChangeText(net, currency)); break;
+			case MRX_ELoadoutStatus.INCOMPLETE: text = WidgetManager.Translate("#MRX-Loadout_Incomplete", slot + 1, GetChangeText(net, currency)); break;
 			case MRX_ELoadoutStatus.PAYMENT_FAILED:
 			{
 				if (txStatus == MRX_ETxStatus.INSUFFICIENT_FUNDS)
-					text = "Not enough money";
+					text = "#MRX-Common_NotEnoughMoney";
 				else
-					text = "Payment failed";
+					text = "#MRX-Common_PaymentFailed";
 
 				break;
 			}
 
-			case MRX_ELoadoutStatus.CHANGED: text = "Your gear changed meanwhile, nothing was charged. Try again."; break;
-			case MRX_ELoadoutStatus.EMPTY_SLOT: text = "Nothing saved in this slot"; break;
-			case MRX_ELoadoutStatus.NO_STASH: text = "Open your stash first"; break;
-			case MRX_ELoadoutStatus.BUSY: text = "Please wait"; break;
-			case MRX_ELoadoutStatus.NOT_AVAILABLE: text = "Loadouts are not available here"; break;
-			case MRX_ELoadoutStatus.OWNER_NOT_READY: text = "Your profile is not ready yet"; break;
-			default: text = "Failed: " + typename.EnumToString(MRX_ELoadoutStatus, status);
+			case MRX_ELoadoutStatus.CHANGED: text = "#MRX-Loadout_Changed"; break;
+			case MRX_ELoadoutStatus.EMPTY_SLOT: text = "#MRX-Loadout_EmptySlot"; break;
+			case MRX_ELoadoutStatus.NO_STASH: text = "#MRX-Loadout_NoStash"; break;
+			case MRX_ELoadoutStatus.BUSY: text = "#MRX-Common_PleaseWait"; break;
+			case MRX_ELoadoutStatus.NOT_AVAILABLE: text = "#MRX-Loadout_NotAvailable"; break;
+			case MRX_ELoadoutStatus.OWNER_NOT_READY: text = "#MRX-Common_OwnerNotReady"; break;
+			default: text = WidgetManager.Translate("#MRX-Common_Failed", typename.EnumToString(MRX_ELoadoutStatus, status));
 		}
 
 		if (error)
@@ -305,12 +305,12 @@ class MRX_LoadoutBar : Managed
 	protected static string GetChangeText(int net, string currency)
 	{
 		if (net > 0)
-			return "paid " + MRX_TextFormat.Money(net, currency);
+			return WidgetManager.Translate("#MRX-Loadout_Paid", MRX_TextFormat.Money(net, currency));
 
 		if (net < 0)
-			return "received " + MRX_TextFormat.Money(-net, currency);
+			return WidgetManager.Translate("#MRX-Loadout_Received", MRX_TextFormat.Money(-net, currency));
 
-		return "nothing to pay";
+		return WidgetManager.Translate("#MRX-Loadout_NothingToPay");
 	}
 
 	//------------------------------------------------------------------------------------------------

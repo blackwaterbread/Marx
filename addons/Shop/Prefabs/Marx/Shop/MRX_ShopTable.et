@@ -22,7 +22,7 @@ GenericEntity : "{090B9013CF776866}Prefabs/Props/Furniture/TableLong_01/TableLon
       "MRX_Shop"
      }
      UIInfo UIInfo "{6A89197001F5BA8A}" {
-      Name "Trade"
+      Name "#MRX-Shop_Trade"
      }
     }
    }
