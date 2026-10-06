@@ -22,16 +22,16 @@ class MRX_ShopCatalog
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! \return First item with the same prefab, or null.
+	//! \return First item with the same prefab, or null. Products (MRX_ShopItem.m_Product) are not matched.
 	MRX_ShopItem FindByPrefab(ResourceName prefab)
 	{
-		if (!m_aItems)
+		if (!m_aItems || prefab.IsEmpty())
 			return null;
 
 		string key = GetPrefabKey(prefab);
 		foreach (MRX_ShopItem item : m_aItems)
 		{
-			if (GetPrefabKey(item.m_sPrefab) == key)
+			if (!item.m_Product && GetPrefabKey(item.m_sPrefab) == key)
 				return item;
 		}
 
@@ -54,7 +54,7 @@ class MRX_ShopCatalog
 			string problem;
 			if (!item || item.m_sId.IsEmpty())
 				problem = "missing ID";
-			else if (item.m_sPrefab.IsEmpty())
+			else if (item.m_sPrefab.IsEmpty() && !item.m_Product)
 				problem = "missing prefab";
 			else if (currencies && !currencies.Find(item.m_sCurrency))
 				problem = "unknown currency '" + item.m_sCurrency + "'";

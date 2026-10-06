@@ -122,8 +122,9 @@ class MRX_ArsenalShopComponent : ScriptComponent
 
 		foreach (MRX_ShopItem item : shop.m_Catalog.m_aItems)
 		{
+			// Products are no inventory items: they are sold in the shop window.
 			string key = MRX_ShopCatalog.GetPrefabKey(item.m_sPrefab);
-			if (item.m_iPrice <= 0 || m_mItems.Contains(key))
+			if (item.m_iPrice <= 0 || item.m_Product || m_mItems.Contains(key))
 				continue;
 
 			MRX_ArsenalItem arsenalItem = new MRX_ArsenalItem();

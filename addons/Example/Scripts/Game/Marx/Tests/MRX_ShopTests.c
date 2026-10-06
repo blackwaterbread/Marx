@@ -28,6 +28,10 @@ class MRX_ShopTests
 		runner.Add(new MRX_Test_ShopBuyTarget());
 		runner.Add(new MRX_Test_ShopSellContents());
 		runner.Add(new MRX_Test_ShopSellGiveBack());
+		runner.Add(new MRX_Test_ShopSellIssuedContents());
+		runner.Add(new MRX_Test_ShopProduct());
+		runner.Add(new MRX_Test_ShopProductRefund());
+		runner.Add(new MRX_Test_ShopProductStates());
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -794,6 +798,183 @@ class MRX_Test_ShopSellGiveBack : MRX_ShopScenarioTest
 
 		Check(!m_aSaleItems[m_iGem].m_bRemoved, "item back in the inventory");
 		CheckInt(m_iSaleEvents, 0, "no sale event");
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Issued contents (listed without prefab by the inventory) are worth nothing but go with the item.
+class MRX_Test_ShopSellIssuedContents : MRX_ShopScenarioTest
+{
+	//------------------------------------------------------------------------------------------------
+	override protected void DefineSteps()
+	{
+		int rifle = AddSaleItem(1, MRX_ShopTests.PREFAB_RIFLE, true, { MRX_ShopTests.PREFAB_AMMO, ResourceName.Empty });
+		Sell(1, rifle).WithContents().ExpectPrice(53).ExpectCounts(3, 1);
+		Balance(1, 153);
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Product with levels up to a maximum. LIMIT_REACHED at the maximum; a failing delivery also answers LIMIT_REACHED.
+class MRX_TestShopProduct : MRX_ShopProduct
+{
+	int m_iLevel;
+	int m_iMax = 2;
+	bool m_bFailDelivery;
+	int m_iDelivered;
+
+	//------------------------------------------------------------------------------------------------
+	override void Check(int playerId, string ownerId, notnull MRX_ShopItem item, notnull MRX_ShopProductCallback callback)
+	{
+		if (m_iLevel >= m_iMax)
+			callback.OnResult(MRX_EShopStatus.LIMIT_REACHED);
+		else
+			callback.OnResult(MRX_EShopStatus.OK);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void Deliver(int playerId, string ownerId, notnull MRX_ShopItem item, notnull MRX_ShopProductCallback callback)
+	{
+		if (m_bFailDelivery || m_iLevel >= m_iMax)
+		{
+			callback.OnResult(MRX_EShopStatus.LIMIT_REACHED);
+			return;
+		}
+
+		m_iLevel++;
+		m_iDelivered++;
+		callback.OnResult(MRX_EShopStatus.OK);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void GetState(int playerId, string ownerId, notnull MRX_ShopItem item, notnull MRX_ShopProductStateCallback callback)
+	{
+		callback.OnResult(MRX_ShopProductState.Create(m_iLevel < m_iMax, string.Format("%1 / %2", m_iLevel, m_iMax)));
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+class MRX_ShopProductTests
+{
+	//------------------------------------------------------------------------------------------------
+	//! Adds an "upgrade" product (price 30, no prefab) to the catalog.
+	static MRX_TestShopProduct AddProduct(notnull MRX_ShopCatalog catalog)
+	{
+		MRX_TestShopProduct product = new MRX_TestShopProduct();
+		MRX_ShopItem item = MRX_ShopItem.Create("upgrade", ResourceName.Empty, 30);
+		item.m_Product = product;
+		catalog.m_aItems.Insert(item);
+		return product;
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Paid, delivered, refused at the maximum before any payment; never bought back; valid without a prefab.
+class MRX_Test_ShopProduct : MRX_ShopScenarioTest
+{
+	protected MRX_TestShopProduct m_Product;
+
+	//------------------------------------------------------------------------------------------------
+	override protected void DefineSteps()
+	{
+		m_Product = MRX_ShopProductTests.AddProduct(m_ShopDef.m_Catalog);
+		Buy(1, "upgrade").ExpectPrice(30);
+		Balance(1, 70);
+		Buy(1, "upgrade");
+		Buy(1, "upgrade").Expect(MRX_EShopStatus.LIMIT_REACHED);
+		Balance(1, 40);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void CheckEnd()
+	{
+		CheckInt(m_Product.m_iDelivered, 2, "deliveries");
+		CheckInt(m_iPurchaseEvents, 2, "purchase events");
+		CheckInt(m_Inventory.m_aGiven.Count(), 0, "no inventory item given");
+		Check(m_ShopDef.m_Catalog.FindByPrefab(ResourceName.Empty) == null, "products are not found by prefab");
+		CheckInt(m_ShopDef.m_Catalog.Validate(null, "test"), 5, "product without prefab is valid");
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! A failed delivery refunds the payment and reports the status of the product.
+class MRX_Test_ShopProductRefund : MRX_ShopScenarioTest
+{
+	//------------------------------------------------------------------------------------------------
+	override protected void DefineSteps()
+	{
+		MRX_ShopProductTests.AddProduct(m_ShopDef.m_Catalog).m_bFailDelivery = true;
+		Buy(1, "upgrade").Expect(MRX_EShopStatus.LIMIT_REACHED);
+		Balance(1, 100);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void CheckEnd()
+	{
+		CheckInt(m_iPurchaseEvents, 0, "purchase events");
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! The shop window's product states: one per product, in catalog order; none without an owner.
+class MRX_Test_ShopProductStates : MRX_TestCase
+{
+	protected ref MRX_ShopService m_Shop;
+	protected ref MRX_ShopDefinition m_ShopDef;
+	protected ref MRX_TestShopStatesReply m_Reply;
+	protected ref MRX_TestShopStatesReply m_NoOwnerReply;
+
+	//------------------------------------------------------------------------------------------------
+	override protected void Run()
+	{
+		MRX_TestIdentityService identity = new MRX_TestIdentityService();
+		identity.m_mFakeIds.Set(1, "states-a");
+		identity.SimulateAudit(1);
+		m_Shop = new MRX_ShopService(MRX_TestUtils.CreateService(), identity, new MRX_TestShopInventory());
+		m_ShopDef = MRX_ShopDefinition.Create("states", MRX_ShopTests.CreateCatalog());
+		MRX_ShopProductTests.AddProduct(m_ShopDef.m_Catalog).m_iLevel = 2;
+
+		m_NoOwnerReply = new MRX_TestShopStatesReply();
+		m_Shop.GetProductStates(9, m_ShopDef, m_NoOwnerReply);
+		m_Reply = new MRX_TestShopStatesReply();
+		m_Reply.m_Test = this;
+		m_Shop.GetProductStates(1, m_ShopDef, m_Reply);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	void OnStates(MRX_TestShopStatesReply reply)
+	{
+		Check(m_NoOwnerReply.m_bAnswered && m_NoOwnerReply.m_aItemIds.IsEmpty(), "no states without an owner");
+		CheckInt(reply.m_aItemIds.Count(), 1, "one product state");
+		if (reply.m_aItemIds.Count() == 1)
+		{
+			CheckString(reply.m_aItemIds[0], "upgrade", "product ID");
+			Check(!reply.m_aAvailable[0], "product at its maximum is not available");
+			CheckString(reply.m_aTexts[0], "2 / 2", "product state text");
+		}
+
+		Finish();
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+class MRX_TestShopStatesReply : MRX_ShopStatesCallback
+{
+	MRX_Test_ShopProductStates m_Test;
+	bool m_bAnswered;
+	ref array<string> m_aItemIds = {};
+	ref array<bool> m_aAvailable = {};
+	ref array<string> m_aTexts = {};
+
+	//------------------------------------------------------------------------------------------------
+	override void OnResult(array<string> itemIds, array<bool> available, array<string> texts)
+	{
+		m_bAnswered = true;
+		m_aItemIds.Copy(itemIds);
+		m_aAvailable.Copy(available);
+		m_aTexts.Copy(texts);
+		if (m_Test)
+			m_Test.OnStates(this);
 	}
 }
 #endif

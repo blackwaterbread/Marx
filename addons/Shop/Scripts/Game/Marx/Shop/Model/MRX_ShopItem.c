@@ -14,6 +14,12 @@ class MRX_ShopItem
 	[Attribute(desc: "Category shown in the shop UI")]
 	string m_sCategory;
 
+	[Attribute(desc: "Shown below the name in the shop window")]
+	LocalizedString m_sDescription;
+
+	[Attribute(desc: "Product that is not an inventory item, e.g. a stash upgrade: the shop has it delivered instead of giving the prefab, which is then only shown (optional). Products are not bought back.")]
+	ref MRX_ShopProduct m_Product;
+
 	[Attribute("cash")]
 	string m_sCurrency;
 

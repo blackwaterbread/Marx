@@ -1,22 +1,26 @@
-//! Shop window (API v0): balance, Buy and Sell tabs, a category filter and the items with a preview, name and price.
-//! Client side; every request is validated again by the server.
+//! Shop window (API v0): the balance, Buy and Sell tabs, category filters and the items as cards with a preview, name,
+//! details and price. Products (MRX_ShopProduct) also show their state for the player, e.g. "4 / 8 pages", which the
+//! server sends on request. Client side; every request is validated again by the server.
 class MRX_ShopMenu : MRX_ScriptedDialog
 {
-	protected static const float WINDOW_WIDTH = 1040;
+	protected static const float WINDOW_WIDTH = 1100;
 	//! Room for the title, header, tabs, filter and footer; the list takes the rest of the screen height.
-	protected static const float RESERVED_HEIGHT = 380;
+	protected static const float RESERVED_HEIGHT = 430;
 	protected static const float MIN_LIST_HEIGHT = 200;
-	protected static const float MAX_LIST_HEIGHT = 600;
+	protected static const float MAX_LIST_HEIGHT = 620;
 	protected static const float PREVIEW_SIZE = 72;
-	protected static const int NAME_FONT_SIZE = 22;
-	protected static const int DETAIL_FONT_SIZE = 16;
+	protected static const int TITLE_FONT_SIZE = 40;
+	protected static const int NAME_FONT_SIZE = 20;
+	protected static const int DETAIL_FONT_SIZE = 15;
+	protected static const int PRICE_FONT_SIZE = 22;
+	protected static const int BALANCE_FONT_SIZE = 28;
+	protected static const int LABEL_FONT_SIZE = 14;
+	protected static const float ROW_BUTTON_WIDTH = 96;
 	//! Waits for the inventory to change after a trade before listing it again.
 	protected static const int REFRESH_DELAY_MS = 300;
-	protected static const int COLOR_REFUSED = 0xFFE06060;
-	protected static const int COLOR_DONE = 0xFF80D080;
 	//! Items per page of the Buy tab. Large catalogs would otherwise create hundreds of rows and item previews at once.
 	static const int PAGE_SIZE = 20;
-	protected static const int CATEGORIES_PER_ROW = 6;
+	protected static const int CATEGORIES_PER_ROW = 7;
 
 	//! Weak: the shop entity may stream out while the dialog is open.
 	protected IEntity m_ShopEntity;
@@ -24,8 +28,8 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 
 	protected TextWidget m_wBalance;
 	protected TextWidget m_wStatus;
-	protected SCR_ButtonTextComponent m_BuyTab;
-	protected SCR_ButtonTextComponent m_SellTab;
+	protected ref MRX_FlatButton m_BuyTab;
+	protected ref MRX_FlatButton m_SellTab;
 	protected Widget m_wCategories;
 	protected VerticalLayoutWidget m_wList;
 	protected Widget m_wPager;
@@ -35,10 +39,15 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 	protected int m_iPageCount = 1;
 	//! Category filter entries and their buttons; the first one shows all.
 	protected ref array<string> m_aCategories = {};
-	protected ref array<SCR_ButtonTextComponent> m_aCategoryButtons = {};
+	protected ref array<ref MRX_FlatButton> m_aCategoryButtons = {};
 	protected int m_iCategory;
+	//! Buttons of the current list and pager.
+	protected ref array<ref MRX_FlatButton> m_aListButtons = {};
 	//! Items offered for sale, by index in the "sell:<index>" actions.
 	protected ref array<IEntity> m_aSellItems = {};
+	//! Product states from the server, by item ID.
+	protected ref map<string, bool> m_mAvailable = new map<string, bool>();
+	protected ref map<string, string> m_mStateTexts = new map<string, string>();
 	//! Name of the item of the running request, for its result.
 	protected string m_sPendingName;
 	protected bool m_bPendingSell;
@@ -93,9 +102,9 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 	{
 		m_iPage = 0;
 		m_bSelling = selling && m_SellTab;
-		m_BuyTab.SetToggled(!m_bSelling, false, false);
+		m_BuyTab.SetSelected(!m_bSelling);
 		if (m_SellTab)
-			m_SellTab.SetToggled(m_bSelling, false, false);
+			m_SellTab.SetSelected(m_bSelling);
 
 		if (m_wCategories)
 			m_wCategories.SetVisible(!m_bSelling);
@@ -112,9 +121,9 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 
 		m_iPage = 0;
 		m_iCategory = index;
-		foreach (int i, SCR_ButtonTextComponent button : m_aCategoryButtons)
+		foreach (int i, MRX_FlatButton button : m_aCategoryButtons)
 		{
-			button.SetToggled(i == m_iCategory, false, false);
+			button.SetSelected(i == m_iCategory);
 		}
 
 		BuildList();
@@ -124,24 +133,23 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 	override protected void OnDialogOpened()
 	{
 		SetDialogWidth(WINDOW_WIDTH);
-
-		// Balance on the left, the outcome of the last trade on the right.
-		Widget header = CreateLayout(WidgetType.HorizontalLayoutWidgetTypeID, m_wHeader);
-		m_wBalance = CreateText(header, string.Empty);
-		LayoutSlot.SetSizeMode(m_wBalance, LayoutSizeMode.Fill);
-		m_wStatus = CreateText(header, string.Empty);
+		StyleTitle();
+		BuildHeader();
 
 		// Tabs on the left, the page buttons of the Buy tab on the right.
 		Widget tabs = CreateLayout(WidgetType.HorizontalLayoutWidgetTypeID, m_wHeader);
 		AlignableSlot.SetHorizontalAlign(tabs, LayoutHorizontalAlign.Stretch);
-		AlignableSlot.SetPadding(tabs, 0, 8, 0, 4);
-		m_BuyTab = CreateTab(tabs, "Buy");
+		AlignableSlot.SetPadding(tabs, 0, 10, 0, 6);
+		m_BuyTab = CreateTab(tabs, "BUY");
 		if (m_Definition.m_bAllowSell)
-			m_SellTab = CreateTab(tabs, "Sell");
+		{
+			m_SellTab = CreateTab(tabs, "SELL");
+			AlignableSlot.SetPadding(m_SellTab.GetRootWidget(), 6, 0, 0, 0);
+		}
 
 		Widget spacer = CreateLayout(WidgetType.HorizontalLayoutWidgetTypeID, tabs);
 		LayoutSlot.SetSizeMode(spacer, LayoutSizeMode.Fill);
-		m_wPager = CreateLayout(WidgetType.HorizontalLayoutWidgetTypeID, tabs);
+		m_wPager = MRX_UIStyle.CreateWidget(WidgetType.HorizontalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), tabs, MRX_UIStyle.CONTAINER);
 
 		CreateCategoryFilter();
 		m_wList = CreateScrollList(m_wRows, Math.Clamp(GetScreenHeight() - RESERVED_HEIGHT, MIN_LIST_HEIGHT, MAX_LIST_HEIGHT));
@@ -150,11 +158,13 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 		if (controller)
 		{
 			controller.MRX_GetOnShopResult().Insert(OnShopResult);
+			controller.MRX_GetOnShopStates().Insert(OnShopStates);
 			controller.MRX_GetWallet().GetOnBalanceChanged().Insert(OnBalanceChanged);
 		}
 
 		UpdateBalance();
 		ShowTab(false);
+		RequestStates();
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -166,6 +176,7 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 		if (controller)
 		{
 			controller.MRX_GetOnShopResult().Remove(OnShopResult);
+			controller.MRX_GetOnShopStates().Remove(OnShopStates);
 			controller.MRX_GetWallet().GetOnBalanceChanged().Remove(OnBalanceChanged);
 		}
 
@@ -173,18 +184,49 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected SCR_ButtonTextComponent CreateTab(notnull Widget parent, string text)
+	//! A large bold title with an accent line under it. The vanilla title (rich text fitted to a narrow box) keeps its
+	//! own font, so it is replaced by a text of the window's own.
+	protected void StyleTitle()
 	{
-		Widget root = GetGame().GetWorkspace().CreateWidgets(BUTTON_LAYOUT, parent);
-		if (!root)
-			return null;
+		Widget header = GetRootWidget().FindAnyWidget("Header");
+		Widget titleSize = GetRootWidget().FindAnyWidget("TitleSize");
+		if (m_wTitle && header && titleSize)
+		{
+			titleSize.SetVisible(false);
+			TextWidget title = MRX_UIStyle.CreateText(header, m_wTitle.GetText(), TITLE_FONT_SIZE, Color.FromInt(Color.WHITE), true);
+			AlignableSlot.SetVerticalAlign(title, LayoutVerticalAlign.Center);
+			AlignableSlot.SetPadding(title, 8, 0, 0, 0);
+		}
 
-		SCR_ButtonTextComponent tab = SCR_ButtonTextComponent.FindButtonTextComponent(root);
-		if (!tab)
-			return null;
+		if (m_wImgTopLine)
+			m_wImgTopLine.SetColor(MRX_UIStyle.GetAccentColor());
+	}
 
-		tab.SetText(text);
-		tab.m_OnClicked.Insert(OnTabClicked);
+	//------------------------------------------------------------------------------------------------
+	//! Balance box (like the inventory's balance panel) with the outcome of the last trade on its right.
+	protected void BuildHeader()
+	{
+		Widget box = MRX_UIStyle.CreateBox(m_wHeader, MRX_UIStyle.GetFillColor(), true);
+		AlignableSlot.SetHorizontalAlign(box, LayoutHorizontalAlign.Stretch);
+
+		Widget row = MRX_UIStyle.CreateWidget(WidgetType.HorizontalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), box);
+		AlignableSlot.SetHorizontalAlign(row, LayoutHorizontalAlign.Stretch);
+		AlignableSlot.SetPadding(row, 16 + MRX_UIStyle.ACCENT_WIDTH, 8, 16, 10);
+
+		Widget column = MRX_UIStyle.CreateWidget(WidgetType.VerticalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), row);
+		LayoutSlot.SetSizeMode(column, LayoutSizeMode.Fill);
+		MRX_UIStyle.CreateText(column, "BALANCE", LABEL_FONT_SIZE, MRX_UIStyle.GetAccentColor(), true);
+		m_wBalance = MRX_UIStyle.CreateText(column, string.Empty, BALANCE_FONT_SIZE, Color.FromInt(Color.WHITE), true);
+
+		m_wStatus = MRX_UIStyle.CreateText(row, string.Empty, DETAIL_FONT_SIZE + 1, MRX_UIStyle.GetMutedColor(), true);
+		LayoutSlot.SetVerticalAlign(m_wStatus, LayoutVerticalAlign.Center);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected MRX_FlatButton CreateTab(notnull Widget parent, string text)
+	{
+		MRX_FlatButton tab = MRX_FlatButton.Create(parent, text, 110, 34, 16);
+		tab.GetOnClicked().Insert(OnTabClicked);
 		return tab;
 	}
 
@@ -203,21 +245,21 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 			return;
 
 		// Rows of a few buttons each, so long category lists stay inside the window.
-		m_wCategories = CreateLayout(WidgetType.VerticalLayoutWidgetTypeID, m_wHeader);
+		m_wCategories = MRX_UIStyle.CreateWidget(WidgetType.VerticalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), m_wHeader, MRX_UIStyle.CONTAINER);
 		AlignableSlot.SetPadding(m_wCategories, 0, 0, 0, 8);
 		Widget categoryRow;
 		foreach (int i, string category : m_aCategories)
 		{
 			if (i % CATEGORIES_PER_ROW == 0)
-				categoryRow = CreateLayout(WidgetType.HorizontalLayoutWidgetTypeID, m_wCategories);
+			{
+				categoryRow = MRX_UIStyle.CreateWidget(WidgetType.HorizontalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), m_wCategories, MRX_UIStyle.CONTAINER);
+				AlignableSlot.SetPadding(categoryRow, 0, 4, 0, 0);
+			}
 
-			SCR_ButtonTextComponent button = CreateTab(categoryRow, category);
-			if (!button)
-				continue;
-
-			button.m_OnClicked.Remove(OnTabClicked);
-			button.m_OnClicked.Insert(OnCategoryClicked);
-			button.SetToggled(m_aCategoryButtons.IsEmpty(), false, false);
+			MRX_FlatButton button = MRX_FlatButton.Create(categoryRow, category, 0, 28, 14);
+			AlignableSlot.SetPadding(button.GetRootWidget(), 0, 0, 6, 0);
+			button.GetOnClicked().Insert(OnCategoryClicked);
+			button.SetSelected(m_aCategoryButtons.IsEmpty());
 			m_aCategoryButtons.Insert(button);
 		}
 	}
@@ -233,6 +275,7 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 			ClearChildren(m_wPager);
 
 		ClearRowButtons();
+		m_aListButtons.Clear();
 		m_aSellItems.Clear();
 		m_iRowCount = 0;
 		m_iPageCount = 1;
@@ -263,12 +306,23 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 		{
 			MRX_ShopItem shown = items[i];
 			bool affordable = CanAfford(shown.m_sCurrency, shown.m_iPrice);
-			ItemPreviewWidget preview = AddItemRow(GetItemName(shown), shown.m_sCategory, FormatPrice(shown.m_iPrice, shown.m_sCurrency), affordable, "Buy", "buy:" + shown.m_sId);
+			// Items without a state from the server (all but products) are always available.
+			bool available = !m_mAvailable.Contains(shown.m_sId) || m_mAvailable.Get(shown.m_sId);
+			string state = m_mStateTexts.Get(shown.m_sId);
+			string detail = shown.m_sCategory;
+			if (!shown.m_sDescription.IsEmpty())
+				detail = WidgetManager.Translate(shown.m_sDescription);
+
+			string buttonText = "BUY";
+			if (!available)
+				buttonText = "MAX";
+
+			ItemPreviewWidget preview = AddItemRow(GetItemName(shown), detail, state, FormatPrice(shown.m_iPrice, shown.m_sCurrency), GetPriceColor(affordable), affordable && available, buttonText, "buy:" + shown.m_sId);
 			ShowPrefabPreview(preview, shown.m_sPrefab);
 		}
 
 		if (m_iRowCount == 0)
-			CreateText(m_wList, "Nothing for sale here.");
+			MRX_UIStyle.CreateText(m_wList, "Nothing for sale here.", NAME_FONT_SIZE, MRX_UIStyle.GetMutedColor());
 
 		BuildPager();
 	}
@@ -280,17 +334,21 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 		if (!m_wPager || m_iPageCount <= 1)
 			return;
 
-		SCR_ButtonTextComponent previous = AddButton(m_wPager, "<", "page:previous");
-		if (previous)
-			previous.SetEnabled(m_iPage > 0, false);
+		MRX_FlatButton previous = MRX_FlatButton.Create(m_wPager, "<", 40, 34, 16);
+		previous.m_sAction = "page:previous";
+		previous.GetOnClicked().Insert(OnListButton);
+		previous.SetEnabled(m_iPage > 0);
+		m_aListButtons.Insert(previous);
 
-		TextWidget pageText = CreateText(m_wPager, string.Format("Page %1 / %2", m_iPage + 1, m_iPageCount));
+		TextWidget pageText = MRX_UIStyle.CreateText(m_wPager, string.Format("PAGE %1 / %2", m_iPage + 1, m_iPageCount), LABEL_FONT_SIZE + 1, MRX_UIStyle.GetMutedColor(), true);
 		AlignableSlot.SetVerticalAlign(pageText, LayoutVerticalAlign.Center);
-		AlignableSlot.SetPadding(pageText, 16, 0, 16, 0);
+		AlignableSlot.SetPadding(pageText, 14, 0, 14, 0);
 
-		SCR_ButtonTextComponent next = AddButton(m_wPager, ">", "page:next");
-		if (next)
-			next.SetEnabled(m_iPage < m_iPageCount - 1, false);
+		MRX_FlatButton next = MRX_FlatButton.Create(m_wPager, ">", 40, 34, 16);
+		next.m_sAction = "page:next";
+		next.GetOnClicked().Insert(OnListButton);
+		next.SetEnabled(m_iPage < m_iPageCount - 1);
+		m_aListButtons.Insert(next);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -316,52 +374,64 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 				name = GetItemName(sellable);
 
 			int index = m_aSellItems.Insert(entity);
-			ItemPreviewWidget preview = AddItemRow(name, sellable.m_sCategory, "+" + FormatPrice(sellPrice, sellable.m_sCurrency), true, "Sell", "sell:" + index.ToString());
+			ItemPreviewWidget preview = AddItemRow(name, sellable.m_sCategory, string.Empty, "+" + FormatPrice(sellPrice, sellable.m_sCurrency), MRX_UIStyle.GetIncreaseColor(), true, "SELL", "sell:" + index.ToString());
 			ShowItemPreview(preview, entity);
 		}
 
 		if (m_iRowCount == 0)
-			CreateText(m_wList, "You carry nothing this shop buys.");
+			MRX_UIStyle.CreateText(m_wList, "You carry nothing this shop buys.", NAME_FONT_SIZE, MRX_UIStyle.GetMutedColor());
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Row with a preview slot, the name and a detail line, the price and a button. \return The preview widget.
-	protected ItemPreviewWidget AddItemRow(string name, string detail, string price, bool enabled, string buttonText, string action)
+	//! Card with a preview slot, the name, a detail line and a state, the price and a button. \return The preview widget.
+	protected ItemPreviewWidget AddItemRow(string name, string detail, string state, string price, Color priceColor, bool enabled, string buttonText, string action)
 	{
-		Widget row = CreateLayout(WidgetType.HorizontalLayoutWidgetTypeID, m_wList);
+		Color fill = MRX_UIStyle.GetRowColor();
+		if (m_iRowCount % 2 == 1)
+			fill = MRX_UIStyle.GetFillColor();
+
+		Widget card = MRX_UIStyle.CreateBox(m_wList, fill, !state.IsEmpty());
+		AlignableSlot.SetHorizontalAlign(card, LayoutHorizontalAlign.Stretch);
+		AlignableSlot.SetPadding(card, 0, 0, 12, 4);
+
+		Widget row = MRX_UIStyle.CreateWidget(WidgetType.HorizontalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), card, MRX_UIStyle.CONTAINER);
 		AlignableSlot.SetHorizontalAlign(row, LayoutHorizontalAlign.Stretch);
-		AlignableSlot.SetPadding(row, 0, 4, 16, 4);
+		AlignableSlot.SetPadding(row, 8 + MRX_UIStyle.ACCENT_WIDTH, 6, 12, 6);
 		ItemPreviewWidget preview = CreateItemPreview(row, PREVIEW_SIZE);
 
-		Widget texts = CreateLayout(WidgetType.VerticalLayoutWidgetTypeID, row);
+		Widget texts = MRX_UIStyle.CreateWidget(WidgetType.VerticalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), row);
 		LayoutSlot.SetSizeMode(texts, LayoutSizeMode.Fill);
 		AlignableSlot.SetVerticalAlign(texts, LayoutVerticalAlign.Center);
-		AlignableSlot.SetPadding(texts, 12, 0, 12, 0);
-		TextWidget nameText = CreateText(texts, name);
-		nameText.SetExactFontSize(NAME_FONT_SIZE);
+		AlignableSlot.SetPadding(texts, 14, 0, 12, 0);
+		MRX_UIStyle.CreateText(texts, name, NAME_FONT_SIZE, Color.FromInt(Color.WHITE), true);
 		if (!detail.IsEmpty())
+			MRX_UIStyle.CreateText(texts, detail, DETAIL_FONT_SIZE, MRX_UIStyle.GetMutedColor());
+
+		if (!state.IsEmpty())
 		{
-			TextWidget detailText = CreateText(texts, detail);
-			detailText.SetExactFontSize(DETAIL_FONT_SIZE);
-			detailText.SetOpacity(0.6);
+			TextWidget stateText = MRX_UIStyle.CreateText(texts, state, DETAIL_FONT_SIZE, MRX_UIStyle.GetAccentColor(), true);
+			AlignableSlot.SetPadding(stateText, 0, 2, 0, 0);
 		}
 
-		TextWidget priceText = CreateText(row, price);
-		priceText.SetExactFontSize(NAME_FONT_SIZE);
+		TextWidget priceText = MRX_UIStyle.CreateText(row, price, PRICE_FONT_SIZE, priceColor, true);
 		AlignableSlot.SetVerticalAlign(priceText, LayoutVerticalAlign.Center);
 		AlignableSlot.SetPadding(priceText, 0, 0, 16, 0);
-		if (!enabled)
-			priceText.SetColor(Color.FromInt(COLOR_REFUSED));
 
-		SCR_ButtonTextComponent button = AddButton(row, buttonText, action);
-		if (button)
-		{
-			AlignableSlot.SetVerticalAlign(button.GetRootWidget(), LayoutVerticalAlign.Center);
-			button.SetEnabled(enabled, false);
-		}
+		MRX_FlatButton button = MRX_FlatButton.Create(row, buttonText, ROW_BUTTON_WIDTH, 36, 16);
+		AlignableSlot.SetVerticalAlign(button.GetRootWidget(), LayoutVerticalAlign.Center);
+		button.m_sAction = action;
+		button.SetEnabled(enabled);
+		button.GetOnClicked().Insert(OnListButton);
+		m_aListButtons.Insert(button);
 
 		m_iRowCount++;
 		return preview;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnListButton(MRX_FlatButton button)
+	{
+		OnRowAction(button.m_sAction);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -406,17 +476,49 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void OnTabClicked(SCR_ButtonBaseComponent tab)
+	protected void OnTabClicked(MRX_FlatButton tab)
 	{
 		ShowTab(tab == m_SellTab);
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void OnCategoryClicked(SCR_ButtonBaseComponent button)
+	protected void OnCategoryClicked(MRX_FlatButton button)
 	{
-		int index = m_aCategoryButtons.Find(SCR_ButtonTextComponent.Cast(button));
+		int index = m_aCategoryButtons.Find(button);
 		if (index >= 0)
 			ShowCategory(index);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Asks the server for the products' states, when the catalog has products.
+	protected void RequestStates()
+	{
+		bool hasProducts;
+		foreach (MRX_ShopItem item : m_Definition.m_Catalog.m_aItems)
+		{
+			if (item.m_Product)
+				hasProducts = true;
+		}
+
+		SCR_PlayerController controller = SCR_PlayerController.Cast(GetGame().GetPlayerController());
+		if (hasProducts && controller && m_ShopEntity)
+			controller.MRX_RequestShopStates(m_ShopEntity);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnShopStates(IEntity shopEntity, array<string> itemIds, array<int> available, array<string> texts)
+	{
+		if (shopEntity != m_ShopEntity)
+			return;
+
+		foreach (int i, string itemId : itemIds)
+		{
+			m_mAvailable.Set(itemId, available[i] != 0);
+			m_mStateTexts.Set(itemId, texts[i]);
+		}
+
+		if (!m_bSelling)
+			BuildList();
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -434,6 +536,7 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 			ShowStatus(GetFailureText(status, txStatus), false);
 		}
 
+		RequestStates();
 		GetGame().GetCallqueue().Remove(BuildList);
 		GetGame().GetCallqueue().CallLater(BuildList, REFRESH_DELAY_MS);
 	}
@@ -454,9 +557,9 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 
 		m_wStatus.SetText(text);
 		if (success)
-			m_wStatus.SetColor(Color.FromInt(COLOR_DONE));
+			m_wStatus.SetColor(MRX_UIStyle.GetIncreaseColor());
 		else
-			m_wStatus.SetColor(Color.FromInt(COLOR_REFUSED));
+			m_wStatus.SetColor(MRX_UIStyle.GetDecreaseColor());
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -476,7 +579,16 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 			balances.Insert(FormatPrice(balance, currency));
 		}
 
-		m_wBalance.SetText("Balance: " + SCR_StringHelper.Join(", ", balances));
+		m_wBalance.SetText(SCR_StringHelper.Join("    ", balances));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected static Color GetPriceColor(bool affordable)
+	{
+		if (affordable)
+			return MRX_UIStyle.GetAccentColor();
+
+		return MRX_UIStyle.GetDecreaseColor();
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -512,6 +624,8 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 			case MRX_EShopStatus.NOT_EMPTY: return "Empty it first (attachments, magazines, contents)";
 			case MRX_EShopStatus.BUSY: return "Please wait";
 			case MRX_EShopStatus.NOT_BUYABLE: return "The shop does not buy this";
+			case MRX_EShopStatus.ISSUED: return "Issued gear is not bought back";
+			case MRX_EShopStatus.LIMIT_REACHED: return "Already at the maximum";
 			case MRX_EShopStatus.DELIVERY_FAILED: return "Could not hand the item over; refunded";
 		}
 

@@ -22,13 +22,15 @@ A catalog is an `MRX_ShopCatalog` config with a list of `MRX_ShopItem`:
 |---|---|
 | ID | Unique in the catalog; sent in purchase requests and written to the ledger reason |
 | Prefab | Item prefab |
-| Name, Category | Display only; an empty name shows the prefab name |
+| Name, Category, Description | Display only; an empty name shows the prefab name, the description shows below it |
+| Product | Optional `MRX_ShopProduct` for something that is not an inventory item, see [Products](#products) |
 | Currency | Default `cash` |
 | Price | Purchase price; 0 or less = not for sale |
 | Sell price | -1 = the shop's sell percentage of the price, 0 = not bought back, otherwise the amount paid |
 | Stock | Reserved, -1 (stock is not enforced yet) |
 
-Invalid entries (missing or duplicate ID, no prefab, unknown currency) are dropped with an error in the log.
+Invalid entries (missing or duplicate ID, no prefab and no product, unknown currency) are dropped with an error in the
+log.
 `Configs/Marx/Shop/MRX_SampleCatalog.conf` lists seven vanilla items.
 
 **Default contents.** Many prefabs come with other items: a rifle with a loaded magazine and optics, a vest with armor
@@ -43,9 +45,27 @@ items, see [Script API](#script-api).
 - **Sell:** only items of the shop's catalog, carried by the player, not locked, and empty (no attachments, loaded
   magazine or contents). The item is removed first, then the price is credited. If the credit fails, Marx tries to
   give the item back.
+- Issued items (handed out for free, `MRX_IssuedItems`, e.g. a respawn kit) are not bought back (`ISSUED`); inside an
+  item sold with its contents they count 0.
 - One request per player at a time; requests closer than 250 ms are refused with `BUSY`.
 
 Ledger source: `marx_shop`. Status codes: `MRX_EShopStatus`.
+
+## Products
+
+A catalog item with a product (`m_Product`, a subclass of `MRX_ShopProduct`) sells something that is not an inventory
+item, e.g. a stash upgrade or a service. Its prefab is optional and only shown. Buying it:
+
+1. `Check(playerId, ownerId, item, callback)`: whether the player may buy it now; answer `OK` or a refusal such as
+   `LIMIT_REACHED` (nothing is paid).
+2. The price is debited.
+3. `Deliver(playerId, ownerId, item, callback)`: grants it; answer `OK`, or a failure, which refunds the price and
+   reports that status. Check the conditions again here: other requests may have run since `Check`.
+
+`GetState(playerId, ownerId, item, callback)` returns what the shop window shows for the player
+(`MRX_ShopProductState`: a text such as "3 / 8" and whether the Buy button is on). Products are never bought back and
+arsenal shops do not list them. Answers may come right away or on a later frame. Products live in the consumer mod
+when they need other addons; for example a stash page product calls `MRX_StashPages` (`Marx_Stash`).
 
 ## Arsenal shop
 
@@ -101,9 +121,14 @@ access sits behind `MRX_ShopInventory`; `MRX_EntityShopInventory` is the engine 
 `MRX_ShopComponent.SetDefinition(definition)` replaces a shop's catalog and settings at runtime (call it with the same
 definition on the server and every client).
 
+`GetProductStates(playerId, shop, callback)` collects the states of a shop's products. `MRX_ShopPriceList(currency)`
+with `AddShop(definition)` turns shop catalogs into the price list of `MRX_Marx.SetPriceList()` (the first shop that
+sells or buys a prefab sets its price), e.g. for [loadouts](stash.md#loadouts).
+
 Clients call `SCR_PlayerController.MRX_RequestBuy(shopEntity, itemId)` and `MRX_RequestSell(shopEntity, item)` (arsenal:
 `MRX_RequestArsenalBuy(arsenal, storageId, itemId)`, `MRX_RequestArsenalSell(arsenal, itemId)`) and get the answer from
-`MRX_GetOnShopResult()`, with the counts of a sale with contents.
+`MRX_GetOnShopResult()`, with the counts of a sale with contents. `MRX_RequestShopStates(shopEntity)` asks for the
+product states, answered through `MRX_GetOnShopStates()`.
 
 `MRX_ShopContentsCheck` (server, development tool) spawns every item of a shop once, locally, and reports what each
 prefab holds by default and what it sells back for; `IsProfitable()` marks items whose price does not cover their
@@ -113,14 +138,19 @@ ms per item, spread over frames; run it in Workbench or a test, not on a live se
 
 ## Default UI
 
-- `MRX_ShopMenu`: a shop window titled with the shop's display name (`m_sDisplayName` on `MRX_ShopComponent`). It
-  shows the balance and the outcome of the last trade, a Buy tab with a category filter (the catalog items'
-  `m_sCategory`) and a Sell tab with the sellable items the player carries. Every item has a 3D preview, its name (the
-  catalog name, or the item's own inventory name), its price and a button; prices the player cannot pay are red and
-  their button is disabled. One item per trade. The Buy tab shows 20 items per page (`MRX_ShopMenu.PAGE_SIZE`) with
-  previous and next buttons, so large catalogs stay responsive; the category buttons wrap after six per row.
-- Built on `MRX_ScriptedDialog` (`Marx_UI`) from vanilla parts in script (the wide configurable dialog, widget
-  library buttons and toolbox, the dialog scroll area, inventory item slots), so no Marx layout asset is needed.
+- `MRX_ShopMenu`: a shop window with the shop's display name (`m_sDisplayName` on `MRX_ShopComponent`) as a large
+  title, in the look of the balance panel. A balance box shows the balance and the outcome of the last trade; below
+  it, Buy and Sell tabs, category filters (the catalog items' `m_sCategory`) and the items as cards: a 3D preview, the
+  name (the catalog name, or the item's own inventory name), the category or description, the price and a button.
+  Prices the player cannot pay are red and their button is off. Products show their state for the player (e.g.
+  "3 / 8") with an accent stripe, and their button is off when the product says so. One item per trade. The Buy tab
+  shows 20 items per page (`MRX_ShopMenu.PAGE_SIZE`) with previous and next buttons, so large catalogs stay
+  responsive; the category filters wrap after seven per row. Mouse only.
+- Built on `MRX_ScriptedDialog` (`Marx_UI`) from vanilla parts in script (the wide configurable dialog, the dialog
+  scroll area, inventory item slots) and Marx widgets, so no Marx layout asset is needed.
+- `MRX_UIStyle`, `MRX_FlatButton` and `MRX_HoldButton` (`Marx_UI`): the colours and helpers of the Marx look, a button
+  in that look, and a button that only acts when held (a bar fills while the mouse button is down), for actions that
+  are costly to trigger by mistake.
 - `MRX_BalancePanel` (`Marx_UI`): the player's balances in large letters below the items of the inventory's vicinity
   panel (every currency of the wallet) and of a Marx arsenal (its currencies). A change counts to the new value and
   briefly shows the difference ("+$6,000"). Mods with their own balance display call

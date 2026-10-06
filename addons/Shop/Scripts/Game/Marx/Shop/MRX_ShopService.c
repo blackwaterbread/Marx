@@ -82,6 +82,25 @@ class MRX_ShopService : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! States of the shop's products for a player (MRX_ShopProduct.GetState), e.g. for the shop window. The callback
+	//! gets them all at once, in catalog order; without an owner it gets none.
+	void GetProductStates(int playerId, notnull MRX_ShopDefinition shop, notnull MRX_ShopStatesCallback callback)
+	{
+		MRX_ShopStatesRequest request = new MRX_ShopStatesRequest(callback, m_CallQueue);
+		string ownerId = m_Identity.GetOwnerId(playerId);
+		if (!ownerId.IsEmpty())
+		{
+			foreach (MRX_ShopItem item : shop.m_Catalog.m_aItems)
+			{
+				if (item.m_Product)
+					request.Add(playerId, ownerId, item);
+			}
+		}
+
+		request.Close();
+	}
+
+	//------------------------------------------------------------------------------------------------
 	void AddValidator(notnull MRX_ShopValidator validator)
 	{
 		if (!m_aValidators.Contains(validator))
@@ -293,6 +312,8 @@ class MRX_ShopBuyOp : MRX_ShopOp
 	protected MRX_ShopItem m_Item;
 	//! Kept until the delivery, which follows the payment on a later frame.
 	protected ref Managed m_Target;
+	//! Reported after the refund of a failed delivery.
+	protected MRX_EShopStatus m_eDeliveryFailure = MRX_EShopStatus.DELIVERY_FAILED;
 
 	//------------------------------------------------------------------------------------------------
 	void MRX_ShopBuyOp(MRX_ShopService service, int playerId, MRX_ShopDefinition shop, string itemId, MRX_ShopCallback callback, Managed target)
@@ -328,12 +349,38 @@ class MRX_ShopBuyOp : MRX_ShopOp
 			return;
 		}
 
+		if (m_Item.m_Product)
+		{
+			MRX_ShopProductCallback checkCallback = new MRX_ShopProductCallback();
+			checkCallback.GetOnResult().Insert(OnProductChecked);
+			m_Item.m_Product.Check(m_iPlayerId, m_sOwnerId, m_Item, checkCallback);
+			return;
+		}
+
 		if (!m_Service.GetInventory().CanGive(m_iPlayerId, m_Item.m_sPrefab, m_Target))
 		{
 			Finish(MRX_EShopStatus.NO_SPACE, null, true);
 			return;
 		}
 
+		Pay();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnProductChecked(MRX_EShopStatus status)
+	{
+		if (status != MRX_EShopStatus.OK)
+		{
+			Finish(status, null, true);
+			return;
+		}
+
+		Pay();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void Pay()
+	{
 		MRX_TxCallback callback = new MRX_TxCallback();
 		callback.GetOnResult().Insert(OnPaid);
 		m_Service.GetEconomy().Debit(m_sOwnerId, m_Item.m_sCurrency, m_Item.m_iPrice, CreateContext("buy", m_Item.m_sId, "buy"), callback);
@@ -349,9 +396,30 @@ class MRX_ShopBuyOp : MRX_ShopOp
 			return;
 		}
 
+		if (m_Item.m_Product)
+		{
+			MRX_ShopProductCallback deliveryCallback = new MRX_ShopProductCallback();
+			deliveryCallback.GetOnResult().Insert(OnProductDelivered);
+			m_Item.m_Product.Deliver(m_iPlayerId, m_sOwnerId, m_Item, deliveryCallback);
+			return;
+		}
+
 		MRX_ShopDeliveryCallback callback = new MRX_ShopDeliveryCallback();
 		callback.GetOnResult().Insert(OnDelivered);
 		m_Service.GetInventory().Give(m_iPlayerId, m_Item.m_sPrefab, callback, m_Target);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnProductDelivered(MRX_EShopStatus status)
+	{
+		if (status == MRX_EShopStatus.OK)
+		{
+			Finish(MRX_EShopStatus.OK, m_Item, true);
+			return;
+		}
+
+		m_eDeliveryFailure = status;
+		Refund();
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -363,6 +431,12 @@ class MRX_ShopBuyOp : MRX_ShopOp
 			return;
 		}
 
+		Refund();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void Refund()
+	{
 		MRX_TxCallback callback = new MRX_TxCallback();
 		callback.GetOnResult().Insert(OnRefunded);
 		m_Service.GetEconomy().Credit(m_sOwnerId, m_Item.m_sCurrency, m_Item.m_iPrice, CreateContext("refund", m_Item.m_sId, "refund"), callback);
@@ -377,7 +451,7 @@ class MRX_ShopBuyOp : MRX_ShopOp
 				m_Result.m_sRequestId, typename.EnumToString(MRX_ETxStatus, result.m_eStatus), m_sOwnerId, m_Item.m_iPrice, m_Item.m_sCurrency, m_Item.m_sId), LogLevel.ERROR);
 		}
 
-		Finish(MRX_EShopStatus.DELIVERY_FAILED, null, true);
+		Finish(m_eDeliveryFailure, null, true);
 	}
 }
 

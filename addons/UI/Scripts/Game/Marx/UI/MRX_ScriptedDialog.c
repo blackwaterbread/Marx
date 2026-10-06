@@ -242,6 +242,11 @@ class MRX_ScriptedDialog : SCR_ConfigurableDialogUi
 		if (preview)
 			preview.SetVisible(true);
 
+		// The slot's stack count is not filled here and would show 0.
+		Widget stackNumber = FindNamed(root, "stackNumber");
+		if (stackNumber)
+			stackNumber.SetVisible(false);
+
 		return preview;
 	}
 

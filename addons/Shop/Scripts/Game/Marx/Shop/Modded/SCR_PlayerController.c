@@ -2,6 +2,10 @@
 void MRX_ClientShopResultDelegate(MRX_EShopStatus status, MRX_ETxStatus txStatus, string itemId, int price, string currency, int itemCount, int unpaidCount);
 typedef func MRX_ClientShopResultDelegate;
 
+//! Product states of a shop (MRX_ShopProduct.GetState) as parallel arrays; available holds 1 or 0.
+void MRX_ClientShopStatesDelegate(IEntity shopEntity, array<string> itemIds, array<int> available, array<string> texts);
+typedef func MRX_ClientShopStatesDelegate;
+
 //! Shop requests: the client sends IDs only, the server resolves prices and items from the shop's catalog.
 modded class SCR_PlayerController
 {
@@ -9,6 +13,7 @@ modded class SCR_PlayerController
 
 	protected int m_iMRX_LastShopRequestTick;
 	protected ref ScriptInvokerBase<MRX_ClientShopResultDelegate> m_MRX_OnShopResult;
+	protected ref ScriptInvokerBase<MRX_ClientShopStatesDelegate> m_MRX_OnShopStates;
 
 	//------------------------------------------------------------------------------------------------
 	//! Client: invoked with the server's answer to a buy or sell request.
@@ -18,6 +23,60 @@ modded class SCR_PlayerController
 			m_MRX_OnShopResult = new ScriptInvokerBase<MRX_ClientShopResultDelegate>();
 
 		return m_MRX_OnShopResult;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Client: invoked with the product states of a shop (see MRX_RequestShopStates).
+	ScriptInvokerBase<MRX_ClientShopStatesDelegate> MRX_GetOnShopStates()
+	{
+		if (!m_MRX_OnShopStates)
+			m_MRX_OnShopStates = new ScriptInvokerBase<MRX_ClientShopStatesDelegate>();
+
+		return m_MRX_OnShopStates;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Client: asks for the states of the shop's products (MRX_ShopProduct.GetState) for this player.
+	void MRX_RequestShopStates(notnull IEntity shopEntity)
+	{
+		Rpc(MRX_RpcAsk_ShopStates, SCR_EntityHelper.EntityToRplId(shopEntity));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Server: sends product states to the player who owns this controller.
+	void MRX_SendShopStates(RplId shopId, array<string> itemIds, array<int> available, array<string> texts)
+	{
+		Rpc(MRX_RpcDo_ShopStates, shopId, itemIds, available, texts);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	[RplRpc(RplChannel.Reliable, RplRcver.Server)]
+	protected void MRX_RpcAsk_ShopStates(RplId shopId)
+	{
+		IEntity shopEntity = SCR_EntityHelper.RplIdToEntity(shopId);
+		MRX_ShopComponent shopComponent;
+		if (shopEntity)
+			shopComponent = MRX_ShopComponent.Cast(shopEntity.FindComponent(MRX_ShopComponent));
+
+		MRX_ShopDefinition shop;
+		if (shopComponent && shopComponent.IsInRange(GetControlledEntity()))
+			shop = shopComponent.GetDefinition();
+
+		if (!shop || !MRX_Shop.GetService())
+		{
+			MRX_SendShopStates(shopId, new array<string>(), new array<int>(), new array<string>());
+			return;
+		}
+
+		MRX_Shop.GetService().GetProductStates(GetPlayerId(), shop, new MRX_ShopStatesRpcReply(this, shopId));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	[RplRpc(RplChannel.Reliable, RplRcver.Owner)]
+	protected void MRX_RpcDo_ShopStates(RplId shopId, array<string> itemIds, array<int> available, array<string> texts)
+	{
+		if (m_MRX_OnShopStates)
+			m_MRX_OnShopStates.Invoke(SCR_EntityHelper.RplIdToEntity(shopId), itemIds, available, texts);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -134,6 +193,40 @@ modded class SCR_PlayerController
 		MRX_ShopResult result = MRX_ShopResult.Create(status, string.Empty);
 		result.m_sItemId = itemId;
 		MRX_SendShopResult(result);
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Sends product states back to the requesting player. Internal.
+class MRX_ShopStatesRpcReply : MRX_ShopStatesCallback
+{
+	//! Weak: the controller may be gone when the states arrive.
+	protected SCR_PlayerController m_Controller;
+	protected RplId m_ShopId;
+
+	//------------------------------------------------------------------------------------------------
+	void MRX_ShopStatesRpcReply(SCR_PlayerController controller, RplId shopId)
+	{
+		m_Controller = controller;
+		m_ShopId = shopId;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void OnResult(array<string> itemIds, array<bool> available, array<string> texts)
+	{
+		if (!m_Controller)
+			return;
+
+		array<int> flags = {};
+		foreach (bool isAvailable : available)
+		{
+			if (isAvailable)
+				flags.Insert(1);
+			else
+				flags.Insert(0);
+		}
+
+		m_Controller.MRX_SendShopStates(m_ShopId, itemIds, flags, texts);
 	}
 }
 

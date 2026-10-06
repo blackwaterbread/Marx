@@ -77,7 +77,7 @@ class MRX_ShopContentsCheck : Managed
 		m_aPending.Clear();
 		foreach (MRX_ShopItem item : shop.m_Catalog.m_aItems)
 		{
-			if (item.m_iPrice > 0)
+			if (item.m_iPrice > 0 && !item.m_Product)
 				m_aPending.Insert(item);
 		}
 

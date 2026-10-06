@@ -37,6 +37,11 @@ Typical loop: open `worlds/GameMaster/GM_Arland.ent`, press Play, read the `[MRX
 For trying the stash by hand, `#marxkit` in the chat (Workbench only, administrators) puts three different backpacks
 and a few small items into your stash; reopen an open stash to see them.
 
+For looking at the windows without typing in the game (e.g. from automation), the server reads one command from
+`$profile:mrx_ui_cmd.txt` every half second in Workbench Play (`MRX_TestUiCommands`): `shop` opens the sample shop
+with a sample product, `stash` opens a stash next to the player, `loadout <slot>` saves the player's gear into a slot of
+the open stash (with test prices), `close` closes the menus.
+
 ## Workbench plugins (Plugins > Marx)
 
 - **Create Marx Reference Configs**: creates the reference persistence and systems configs in `Marx_Core`, and adds
