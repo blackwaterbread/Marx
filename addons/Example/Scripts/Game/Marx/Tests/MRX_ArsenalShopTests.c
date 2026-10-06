@@ -54,6 +54,7 @@ class MRX_Test_ShopContentsCheck : MRX_TestCase
 			if (entry.m_sItemId == "rifle")
 			{
 				Check(entry.m_iContentsCount >= 1, "rifle comes with contents");
+				CheckInt(entry.m_aContents.Count(), entry.m_iContentsCount, "rifle lists its content prefabs");
 				Check(entry.m_iContentsSell >= 10, "its magazine is worth at least 10");
 				Check(entry.IsProfitable(), "rifle at 10 is profitable to sell back");
 			}

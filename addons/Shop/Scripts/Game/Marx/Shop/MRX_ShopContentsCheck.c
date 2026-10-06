@@ -15,6 +15,9 @@ class MRX_ShopContentsEntry : Managed
 	int m_iContentsPrice;
 	//! Sum of the shop's sell prices of the contents.
 	int m_iContentsSell;
+	//! Prefabs of the contents, recursively, including those the shop does not sell: lets a price generator price the
+	//! contents itself.
+	ref array<ResourceName> m_aContents = {};
 	//! False when the prefab could not be spawned.
 	bool m_bMeasured;
 
@@ -83,7 +86,8 @@ class MRX_ShopContentsCheck : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Writes the entries as CSV (one header line), e.g. for a price generator.
+	//! Writes the entries as CSV (one header line), e.g. for a price generator. The last column lists the content
+	//! prefabs, separated by semicolons.
 	//! \return False when the file cannot be written.
 	static bool WriteReport(string path, notnull array<ref MRX_ShopContentsEntry> entries)
 	{
@@ -91,7 +95,7 @@ class MRX_ShopContentsCheck : Managed
 		if (!file)
 			return false;
 
-		file.WriteLine("item_id,prefab,currency,price,sell_price,contents,unknown_contents,contents_price,contents_sell,profitable,measured");
+		file.WriteLine("item_id,prefab,currency,price,sell_price,contents,unknown_contents,contents_price,contents_sell,profitable,measured,content_prefabs");
 		foreach (MRX_ShopContentsEntry entry : entries)
 		{
 			int profitable, measured;
@@ -101,9 +105,18 @@ class MRX_ShopContentsCheck : Managed
 			if (entry.m_bMeasured)
 				measured = 1;
 
+			string contents;
+			foreach (int i, ResourceName content : entry.m_aContents)
+			{
+				if (i > 0)
+					contents += ";";
+
+				contents += content;
+			}
+
 			string line = string.Format("%1,%2,%3,%4,%5,%6,%7,%8,%9", entry.m_sItemId, entry.m_sPrefab, entry.m_sCurrency, entry.m_iPrice,
 				entry.m_iSellPrice, entry.m_iContentsCount, entry.m_iUnknownCount, entry.m_iContentsPrice, entry.m_iContentsSell);
-			file.WriteLine(string.Format("%1,%2,%3", line, profitable, measured));
+			file.WriteLine(string.Format("%1,%2,%3,%4", line, profitable, measured, contents));
 		}
 
 		file.Close();
@@ -179,6 +192,7 @@ class MRX_ShopContentsCheck : Managed
 		foreach (MRX_ItemSnapshot child : snapshot.m_aChildren)
 		{
 			entry.m_iContentsCount++;
+			entry.m_aContents.Insert(child.m_sPrefab);
 			MRX_ShopItem item = m_Shop.m_Catalog.FindByPrefab(child.m_sPrefab);
 			if (item && item.m_sCurrency == entry.m_sCurrency)
 			{

@@ -100,7 +100,8 @@ Clients call `SCR_PlayerController.MRX_RequestBuy(shopEntity, itemId)` and `MRX_
 
 `MRX_ShopContentsCheck` (server, development tool) spawns every item of a shop once, locally, and reports what each
 prefab holds by default and what it sells back for; `IsProfitable()` marks items whose price does not cover their
-default contents. `WriteReport(path, entries)` writes the result as CSV, e.g. for a price generator. It takes about 15
+default contents. Each entry also lists the content prefabs (`m_aContents`), so a price generator can price them
+itself. `WriteReport(path, entries)` writes the result as CSV, e.g. for a price generator. It takes about 15
 ms per item, spread over frames; run it in Workbench or a test, not on a live server.
 
 ## Default UI
