@@ -81,6 +81,8 @@ What changes on such an arsenal:
   medical items for free.
 - It cannot be disabled (`SCR_ArsenalComponent.SetArsenalEnabled(false)` is ignored), since the vanilla inventory
   refuses to sell items to a disabled arsenal.
+- Its open action shows the shop's display name (`m_sDisplayName`). The window title is the arsenal storage's own item
+  name, as in vanilla.
 
 Large catalogs take a moment to open the first time: the window creates a preview of every item (about 2 ms each). Marx
 creates them a few per frame while the local player is within 30 m of the arsenal.
