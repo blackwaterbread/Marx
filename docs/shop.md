@@ -66,3 +66,5 @@ the answer from `MRX_GetOnShopResult()`.
   own HUD call `MRX_WalletHud.SetEnabled(false)` and use `MRX_ClientWallet` instead.
 - `MRX_TextFormat` (`Marx_UI`): amounts with thousands separators (`Amount(12500)` = "12,500", `Money(12500, "cash")` =
   "12,500 cash"), as the shop window and the wallet HUD show them. Mods can use it in their own UI.
+  `MRX_TextFormat.SetCurrencyFormat("cash", "$%1")` changes how a currency is shown ("$12,500") on the machine that
+  calls it; storage and the API keep the currency ID. Call it on every machine, e.g. in your game mode's `EOnInit`.
