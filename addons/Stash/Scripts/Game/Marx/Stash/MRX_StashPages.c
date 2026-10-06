@@ -27,7 +27,11 @@ class MRX_StashPages
 		if (!record)
 			return 0;
 
-		return Math.Max(0, record.GetProperty(PROPERTY).ToInt());
+		string value = record.GetProperty(PROPERTY);
+		if (value.IsEmpty())
+			return 0;
+
+		return Math.Max(0, value.ToInt());
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -64,8 +68,9 @@ class MRX_StashPagesCallback : Managed
 }
 
 //------------------------------------------------------------------------------------------------
-//! Reads the extra pages, then sets them only if they did not change meanwhile. Internal.
-class MRX_StashPagesChange : Managed
+//! Reads the extra pages, then sets them only if they did not change meanwhile. Receives the stash listing itself, so the
+//! stash service keeps it alive until it answers. Internal.
+class MRX_StashPagesChange : MRX_StashCallback
 {
 	protected string m_sOwnerId;
 	protected int m_iCount;
@@ -94,14 +99,13 @@ class MRX_StashPagesChange : Managed
 			return;
 		}
 
-		MRX_StashCallback callback = new MRX_StashCallback();
-		callback.GetOnResult().Insert(OnListed);
-		stash.List(m_sOwnerId, callback);
+		stash.List(m_sOwnerId, this);
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void OnListed(MRX_EStashStatus status, MRX_StashRecord record)
+	override void OnResult(MRX_EStashStatus status, MRX_StashRecord record)
 	{
+		super.OnResult(status, record);
 		if (status != MRX_EStashStatus.OK || !record)
 		{
 			m_Callback.OnResult(status, false, 0);
@@ -118,13 +122,12 @@ class MRX_StashPagesChange : Managed
 
 		string current = record.GetProperty(MRX_StashPages.PROPERTY);
 		MRX_PropertyChange change = MRX_PropertyChange.Create(MRX_StashPages.PROPERTY, (extra + m_iCount).ToString()).Expecting(current);
-		MRX_StashResultCallback callback = new MRX_StashResultCallback();
-		callback.GetOnResult().Insert(OnChanged);
-		MRX_Marx.GetStash().SetProperty(m_sOwnerId, change, m_Context, callback);
+		MRX_Marx.GetStash().SetProperty(m_sOwnerId, change, m_Context, new MRX_StashPagesChangeReply(this));
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void OnChanged(MRX_StashResult result)
+	//! Internal, called by MRX_StashPagesChangeReply.
+	void OnChanged(MRX_StashResult result)
 	{
 		if (result.m_eStatus != MRX_EStashStatus.OK)
 		{
@@ -133,5 +136,25 @@ class MRX_StashPagesChange : Managed
 		}
 
 		m_Callback.OnResult(MRX_EStashStatus.OK, false, m_iPages + m_iCount);
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Keeps the change alive until the stash service answers. Internal.
+class MRX_StashPagesChangeReply : MRX_StashResultCallback
+{
+	protected ref MRX_StashPagesChange m_Change;
+
+	//------------------------------------------------------------------------------------------------
+	void MRX_StashPagesChangeReply(MRX_StashPagesChange change)
+	{
+		m_Change = change;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void OnResult(MRX_StashResult result)
+	{
+		super.OnResult(result);
+		m_Change.OnChanged(result);
 	}
 }
