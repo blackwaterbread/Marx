@@ -1,5 +1,5 @@
 //! Stash panel in the vanilla inventory: the stash container is opened as its own storage panel (OpenStorageAsContainer).
-//! While it is open, the vicinity panel (items on the ground) is hidden.
+//! While it is open, the vicinity panel (items on the ground) is hidden (see Marx_UI MRX_ReplacesVicinity).
 modded class SCR_InventoryMenuUI
 {
 	protected bool m_bMRX_QuickMove;
@@ -36,17 +36,12 @@ modded class SCR_InventoryMenuUI
 	}
 
 	//------------------------------------------------------------------------------------------------
-	bool MRX_IsVicinityShown()
+	override protected bool MRX_ReplacesVicinity(notnull SCR_InventoryOpenedStorageUI panel)
 	{
-		return m_wLootStorage && m_wLootStorage.IsVisible();
-	}
+		if (MRX_StashStorageComponent.Cast(panel.GetStorage()))
+			return true;
 
-	//------------------------------------------------------------------------------------------------
-	//! The vicinity panel is only hidden, not removed: vanilla code uses it without null checks.
-	protected void MRX_UpdateVicinityVisibility()
-	{
-		if (m_wLootStorage)
-			m_wLootStorage.SetVisible(!MRX_FindStashPanel());
+		return super.MRX_ReplacesVicinity(panel);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -57,21 +52,6 @@ modded class SCR_InventoryMenuUI
 
 		// Same size as the vicinity panel (SCR_InventoryStorageLootUI), which the stash panel replaces.
 		return new MRX_StashPanelUI(storage, null, this, 0, {storage}, MRX_StashStorageComponent.PAGE_COLUMNS, MRX_StashStorageComponent.PAGE_ROWS);
-	}
-
-	//------------------------------------------------------------------------------------------------
-	//! Vanilla rebuilds the vicinity panel when other storages are opened or the last one is closed.
-	override void ShowVicinity(bool compact = false)
-	{
-		super.ShowVicinity(compact);
-		MRX_UpdateVicinityVisibility();
-	}
-
-	//------------------------------------------------------------------------------------------------
-	override void RemoveOpenStorage(SCR_InventoryOpenedStorageUI openedStorage)
-	{
-		super.RemoveOpenStorage(openedStorage);
-		MRX_UpdateVicinityVisibility();
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -97,8 +77,7 @@ modded class SCR_InventoryMenuUI
 		}
 
 		// Other panels closed meanwhile may have shown the vicinity panel again.
-		if (!stashPanels.IsEmpty())
-			MRX_UpdateVicinityVisibility();
+		MRX_UpdateVicinityVisibility();
 	}
 
 	//------------------------------------------------------------------------------------------------
