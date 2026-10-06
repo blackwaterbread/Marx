@@ -1,5 +1,7 @@
 # Marx
 
+[![License](https://img.shields.io/badge/License-APL-orange.svg?style=flat-square)](https://github.com/blackwaterbread/Marx/blob/main/LICENSE)
+
 Private-property framework for Arma Reforger: wallets with a ledger, shops, a stash of owned items with saved loadouts,
 and a script API that other mods build on. Everything is server-authoritative; clients only send requests by ID.
 
