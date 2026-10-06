@@ -262,36 +262,36 @@ class MRX_ArsenalBalanceBar : Managed
 	//------------------------------------------------------------------------------------------------
 	protected static Color GetAccentColor()
 	{
-		return Color.FromRGBA(226, 167, 79, 255);
+		return Color.FromSRGBA(226, 167, 79, 255);
 	}
 
 	//------------------------------------------------------------------------------------------------
 	protected static Color GetFrameColor()
 	{
-		return Color.FromRGBA(62, 66, 72, 255);
+		return Color.FromSRGBA(62, 66, 72, 255);
 	}
 
 	//------------------------------------------------------------------------------------------------
 	protected static Color GetFillColor()
 	{
-		return Color.FromRGBA(20, 22, 25, 240);
+		return Color.FromSRGBA(20, 22, 25, 240);
 	}
 
 	//------------------------------------------------------------------------------------------------
 	protected static Color GetIncreaseColor()
 	{
-		return Color.FromRGBA(120, 205, 100, 255);
+		return Color.FromSRGBA(120, 205, 100, 255);
 	}
 
 	//------------------------------------------------------------------------------------------------
 	protected static Color GetDecreaseColor()
 	{
-		return Color.FromRGBA(235, 90, 75, 255);
+		return Color.FromSRGBA(235, 90, 75, 255);
 	}
 
 	//------------------------------------------------------------------------------------------------
 	protected static Color GetInfoColor()
 	{
-		return Color.FromRGBA(200, 204, 210, 255);
+		return Color.FromSRGBA(200, 204, 210, 255);
 	}
 }
