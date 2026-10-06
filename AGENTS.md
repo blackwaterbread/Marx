@@ -20,9 +20,9 @@ Marx: generic private-property framework mod for Arma Reforger (wallets, ledger,
 ## Repo layout
 ```
 addons/Core/     gproj ID Marx_Core     services, models, storage, entity bridge, RPC, admin, public API (no UI)
-addons/UI/       gproj ID Marx_UI       shared default UI: dialog base, wallet HUD (depends on Core)
-addons/Shop/     gproj ID Marx_Shop     shop logic, prefabs, catalogs, shop UI (depends on Core, UI)
-addons/Stash/    gproj ID Marx_Stash    stash point action, stash UI, prefabs (depends on Core, UI)
+addons/UI/       gproj ID Marx_UI       shared default UI: dialog base, inventory balance panel, buttons (depends on Core)
+addons/Shop/     gproj ID Marx_Shop     shop logic, catalogs, products, shop keepers, arsenal shop, shop UI, prefabs (depends on Core, UI)
+addons/Stash/    gproj ID Marx_Stash    stash point action, stash panel, pages, loadouts, prefabs (depends on Core, UI)
 addons/Example/  gproj ID Marx_Example  minimal consumer sample, Workbench test harness
 assets-src/      raw sources (outside gproj dirs = not packed)
 tools/           build/validation scripts
