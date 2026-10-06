@@ -14,6 +14,10 @@ Any entity becomes a shop with:
 `Prefabs/Marx/Shop/MRX_ShopTable.et` is a ready example. A vanilla arsenal can be a shop too, see
 [Arsenal shop](#arsenal-shop).
 
+A character can sell too: a character prefab placed without a group has no AI and just stands. Add the shop components
+and `MRX_OpenShopAction` (in one of the character's action contexts, e.g. `default`), and `MRX_ShopKeeperComponent`,
+which turns its damage off so the shop stays open.
+
 ## Catalogs
 
 A catalog is an `MRX_ShopCatalog` config with a list of `MRX_ShopItem`:
