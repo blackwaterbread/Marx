@@ -14,6 +14,8 @@ class MRX_ScriptedDialog : SCR_ConfigurableDialogUi
 	static const ResourceName ITEM_SLOT_LAYOUT = "{F437ACE2BD5F11E2}UI/layouts/Menus/Inventory/InventoryItemSlot.layout";
 	static const ResourceName FONT = "{3E7733BAC8C831F6}UI/Fonts/RobotoCondensed/RobotoCondensed_Regular.fnt";
 	protected static const int FONT_SIZE = 20;
+	//! Widgets created in script inherit the clipping of their parent, so rows in a scroll list stay inside it.
+	protected static const int WIDGET_FLAGS = WidgetFlags.VISIBLE | WidgetFlags.INHERIT_CLIPPING;
 
 	//! Open Marx dialogs (weak: a dialog destroyed without closing, e.g. when the game ends, drops out by itself).
 	//! Interactions are off meanwhile (see the modded SCR_InteractionHandlerComponent).
@@ -192,7 +194,7 @@ class MRX_ScriptedDialog : SCR_ConfigurableDialogUi
 	//------------------------------------------------------------------------------------------------
 	protected static Widget CreateLayout(WidgetType type, notnull Widget parent)
 	{
-		return GetGame().GetWorkspace().CreateWidget(type, WidgetFlags.VISIBLE, Color.FromInt(Color.WHITE), 0, parent);
+		return GetGame().GetWorkspace().CreateWidget(type, WIDGET_FLAGS, Color.FromInt(Color.WHITE), 0, parent);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -248,8 +250,9 @@ class MRX_ScriptedDialog : SCR_ConfigurableDialogUi
 	static void ShowPrefabPreview(ItemPreviewWidget widget, ResourceName prefab)
 	{
 		ItemPreviewManagerEntity manager = GetPreviewManager();
+		// Forced like the vanilla inventory slots: widgets are rebuilt with every list, and a cached preview is not redrawn otherwise.
 		if (widget && manager && !prefab.IsEmpty())
-			manager.SetPreviewItemFromPrefab(widget, prefab);
+			manager.SetPreviewItemFromPrefab(widget, prefab, null, true);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -257,7 +260,7 @@ class MRX_ScriptedDialog : SCR_ConfigurableDialogUi
 	{
 		ItemPreviewManagerEntity manager = GetPreviewManager();
 		if (widget && manager && item)
-			manager.SetPreviewItem(widget, item);
+			manager.SetPreviewItem(widget, item, null, true);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -312,7 +315,7 @@ class MRX_ScriptedDialog : SCR_ConfigurableDialogUi
 	//------------------------------------------------------------------------------------------------
 	protected TextWidget CreateText(notnull Widget parent, string text)
 	{
-		TextWidget widget = TextWidget.Cast(GetGame().GetWorkspace().CreateWidget(WidgetType.TextWidgetTypeID, WidgetFlags.VISIBLE, Color.FromInt(Color.WHITE), 0, parent));
+		TextWidget widget = TextWidget.Cast(GetGame().GetWorkspace().CreateWidget(WidgetType.TextWidgetTypeID, WIDGET_FLAGS, Color.FromInt(Color.WHITE), 0, parent));
 		widget.SetFont(FONT);
 		widget.SetExactFontSize(FONT_SIZE);
 		widget.SetText(text);

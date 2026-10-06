@@ -58,7 +58,8 @@ the answer from `MRX_GetOnShopResult()`.
   shows the balance and the outcome of the last trade, a Buy tab with a category filter (the catalog items'
   `m_sCategory`) and a Sell tab with the sellable items the player carries. Every item has a 3D preview, its name (the
   catalog name, or the item's own inventory name), its price and a button; prices the player cannot pay are red and
-  their button is disabled. One item per trade.
+  their button is disabled. One item per trade. The Buy tab shows 20 items per page (`MRX_ShopMenu.PAGE_SIZE`) with
+  previous and next buttons, so large catalogs stay responsive; the category buttons wrap after six per row.
 - Built on `MRX_ScriptedDialog` (`Marx_UI`) from vanilla parts in script (the wide configurable dialog, widget
   library buttons and toolbox, the dialog scroll area, inventory item slots), so no Marx layout asset is needed.
 - `MRX_WalletHud` (`Marx_UI`): balances in the top right corner of the HUD with a short change hint. Mods with their

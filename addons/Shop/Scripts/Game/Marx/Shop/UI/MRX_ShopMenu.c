@@ -14,6 +14,9 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 	protected static const int REFRESH_DELAY_MS = 300;
 	protected static const int COLOR_REFUSED = 0xFFE06060;
 	protected static const int COLOR_DONE = 0xFF80D080;
+	//! Items per page of the Buy tab. Large catalogs would otherwise create hundreds of rows and item previews at once.
+	static const int PAGE_SIZE = 20;
+	protected static const int CATEGORIES_PER_ROW = 6;
 
 	//! Weak: the shop entity may stream out while the dialog is open.
 	protected IEntity m_ShopEntity;
@@ -25,8 +28,11 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 	protected SCR_ButtonTextComponent m_SellTab;
 	protected Widget m_wCategories;
 	protected VerticalLayoutWidget m_wList;
+	protected Widget m_wPager;
 	protected bool m_bSelling;
 	protected int m_iRowCount;
+	protected int m_iPage;
+	protected int m_iPageCount = 1;
 	//! Category filter entries and their buttons; the first one shows all.
 	protected ref array<string> m_aCategories = {};
 	protected ref array<SCR_ButtonTextComponent> m_aCategoryButtons = {};
@@ -53,16 +59,39 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! \return Item rows of the shown tab and category.
+	//! \return Item rows of the shown tab, category and page.
 	int GetRowCount()
 	{
 		return m_iRowCount;
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! \return Pages of the shown tab and category (at least 1).
+	int GetPageCount()
+	{
+		return m_iPageCount;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Shows a page of the Buy tab, 0-based; clamped to the existing pages.
+	void ShowPage(int page)
+	{
+		m_iPage = page;
+		BuildList();
+
+		ScrollLayoutWidget scroll;
+		if (m_wList)
+			scroll = ScrollLayoutWidget.Cast(m_wList.GetParent());
+
+		if (scroll)
+			scroll.SetSliderPos(0, 0);
+	}
+
+	//------------------------------------------------------------------------------------------------
 	//! Shows the Sell tab (true) or the Buy tab.
 	void ShowTab(bool selling)
 	{
+		m_iPage = 0;
 		m_bSelling = selling && m_SellTab;
 		m_BuyTab.SetToggled(!m_bSelling, false, false);
 		if (m_SellTab)
@@ -81,6 +110,7 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 		if (index < 0 || index >= m_aCategories.Count())
 			index = 0;
 
+		m_iPage = 0;
 		m_iCategory = index;
 		foreach (int i, SCR_ButtonTextComponent button : m_aCategoryButtons)
 		{
@@ -101,11 +131,17 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 		LayoutSlot.SetSizeMode(m_wBalance, LayoutSizeMode.Fill);
 		m_wStatus = CreateText(header, string.Empty);
 
+		// Tabs on the left, the page buttons of the Buy tab on the right.
 		Widget tabs = CreateLayout(WidgetType.HorizontalLayoutWidgetTypeID, m_wHeader);
+		AlignableSlot.SetHorizontalAlign(tabs, LayoutHorizontalAlign.Stretch);
 		AlignableSlot.SetPadding(tabs, 0, 8, 0, 4);
 		m_BuyTab = CreateTab(tabs, "Buy");
 		if (m_Definition.m_bAllowSell)
 			m_SellTab = CreateTab(tabs, "Sell");
+
+		Widget spacer = CreateLayout(WidgetType.HorizontalLayoutWidgetTypeID, tabs);
+		LayoutSlot.SetSizeMode(spacer, LayoutSizeMode.Fill);
+		m_wPager = CreateLayout(WidgetType.HorizontalLayoutWidgetTypeID, tabs);
 
 		CreateCategoryFilter();
 		m_wList = CreateScrollList(m_wRows, Math.Clamp(GetScreenHeight() - RESERVED_HEIGHT, MIN_LIST_HEIGHT, MAX_LIST_HEIGHT));
@@ -125,6 +161,7 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 	override void OnMenuClose()
 	{
 		GetGame().GetCallqueue().Remove(BuildList);
+		GetGame().GetCallqueue().Remove(ShowPage);
 		SCR_PlayerController controller = SCR_PlayerController.Cast(GetGame().GetPlayerController());
 		if (controller)
 		{
@@ -165,11 +202,16 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 		if (m_aCategories.Count() < 3)
 			return;
 
-		m_wCategories = CreateLayout(WidgetType.HorizontalLayoutWidgetTypeID, m_wHeader);
+		// Rows of a few buttons each, so long category lists stay inside the window.
+		m_wCategories = CreateLayout(WidgetType.VerticalLayoutWidgetTypeID, m_wHeader);
 		AlignableSlot.SetPadding(m_wCategories, 0, 0, 0, 8);
-		foreach (string category : m_aCategories)
+		Widget categoryRow;
+		foreach (int i, string category : m_aCategories)
 		{
-			SCR_ButtonTextComponent button = CreateTab(m_wCategories, category);
+			if (i % CATEGORIES_PER_ROW == 0)
+				categoryRow = CreateLayout(WidgetType.HorizontalLayoutWidgetTypeID, m_wCategories);
+
+			SCR_ButtonTextComponent button = CreateTab(categoryRow, category);
 			if (!button)
 				continue;
 
@@ -187,9 +229,13 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 			return;
 
 		ClearChildren(m_wList);
+		if (m_wPager)
+			ClearChildren(m_wPager);
+
 		ClearRowButtons();
 		m_aSellItems.Clear();
 		m_iRowCount = 0;
+		m_iPageCount = 1;
 		if (m_bSelling)
 			BuildSellList();
 		else
@@ -203,18 +249,48 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 		if (m_iCategory > 0 && m_iCategory < m_aCategories.Count())
 			category = m_aCategories[m_iCategory];
 
+		array<MRX_ShopItem> items = {};
 		foreach (MRX_ShopItem item : m_Definition.m_Catalog.m_aItems)
 		{
-			if (item.m_iPrice <= 0 || (!category.IsEmpty() && item.m_sCategory != category))
-				continue;
+			if (item.m_iPrice > 0 && (category.IsEmpty() || item.m_sCategory == category))
+				items.Insert(item);
+		}
 
-			bool affordable = CanAfford(item.m_sCurrency, item.m_iPrice);
-			ItemPreviewWidget preview = AddItemRow(GetItemName(item), item.m_sCategory, FormatPrice(item.m_iPrice, item.m_sCurrency), affordable, "Buy", "buy:" + item.m_sId);
-			ShowPrefabPreview(preview, item.m_sPrefab);
+		m_iPageCount = Math.Max(1, (items.Count() + PAGE_SIZE - 1) / PAGE_SIZE);
+		m_iPage = Math.ClampInt(m_iPage, 0, m_iPageCount - 1);
+		int end = Math.Min(items.Count(), (m_iPage + 1) * PAGE_SIZE);
+		for (int i = m_iPage * PAGE_SIZE; i < end; i++)
+		{
+			MRX_ShopItem shown = items[i];
+			bool affordable = CanAfford(shown.m_sCurrency, shown.m_iPrice);
+			ItemPreviewWidget preview = AddItemRow(GetItemName(shown), shown.m_sCategory, FormatPrice(shown.m_iPrice, shown.m_sCurrency), affordable, "Buy", "buy:" + shown.m_sId);
+			ShowPrefabPreview(preview, shown.m_sPrefab);
 		}
 
 		if (m_iRowCount == 0)
 			CreateText(m_wList, "Nothing for sale here.");
+
+		BuildPager();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Previous / page number / next, when there is more than one page.
+	protected void BuildPager()
+	{
+		if (!m_wPager || m_iPageCount <= 1)
+			return;
+
+		SCR_ButtonTextComponent previous = AddButton(m_wPager, "<", "page:previous");
+		if (previous)
+			previous.SetEnabled(m_iPage > 0, false);
+
+		TextWidget pageText = CreateText(m_wPager, string.Format("Page %1 / %2", m_iPage + 1, m_iPageCount));
+		AlignableSlot.SetVerticalAlign(pageText, LayoutVerticalAlign.Center);
+		AlignableSlot.SetPadding(pageText, 16, 0, 16, 0);
+
+		SCR_ButtonTextComponent next = AddButton(m_wPager, ">", "page:next");
+		if (next)
+			next.SetEnabled(m_iPage < m_iPageCount - 1, false);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -291,6 +367,17 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 	//------------------------------------------------------------------------------------------------
 	override protected void OnRowAction(string action)
 	{
+		if (action == "page:previous" || action == "page:next")
+		{
+			int step = 1;
+			if (action == "page:previous")
+				step = -1;
+
+			// Later: the pressed button is removed with the list it belongs to.
+			GetGame().GetCallqueue().CallLater(ShowPage, 0, false, m_iPage + step);
+			return;
+		}
+
 		SCR_PlayerController controller = SCR_PlayerController.Cast(GetGame().GetPlayerController());
 		if (!controller || !m_ShopEntity)
 			return;
