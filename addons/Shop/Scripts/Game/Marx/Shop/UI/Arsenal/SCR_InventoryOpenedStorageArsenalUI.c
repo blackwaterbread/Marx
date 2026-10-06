@@ -1,10 +1,13 @@
-//! The panel of a Marx arsenal shows the local balance and the outcome of trades below its items
-//! (MRX_ArsenalBalanceBar), and updates its slots when the balance changes.
+//! The panel of a Marx arsenal lists the items of one category or matching a search (MRX_ArsenalFilterBar above its
+//! items), shows the local balance and the outcome of trades below its items (MRX_ArsenalBalanceBar), and updates its
+//! slots when the balance changes.
 modded class SCR_InventoryOpenedStorageArsenalUI
 {
 	protected MRX_ClientWallet m_MRX_Wallet;
 	protected SCR_PlayerController m_MRX_Controller;
 	protected ref MRX_ArsenalBalanceBar m_MRX_BalanceBar;
+	protected ref MRX_ArsenalFilter m_MRX_Filter;
+	protected ref MRX_ArsenalFilterBar m_MRX_FilterBar;
 
 	//------------------------------------------------------------------------------------------------
 	protected MRX_ArsenalShopComponent MRX_GetArsenal()
@@ -18,11 +21,26 @@ modded class SCR_InventoryOpenedStorageArsenalUI
 	//------------------------------------------------------------------------------------------------
 	override void Init()
 	{
+		// The panel lists its items right after Init, already filtered.
+		MRX_ArsenalShopComponent arsenal = MRX_GetArsenal();
+		if (arsenal)
+		{
+			string shopId;
+			if (arsenal.GetShop())
+				shopId = arsenal.GetShop().m_sShopId;
+
+			m_MRX_Filter = new MRX_ArsenalFilter(shopId, arsenal.GetCategories());
+		}
+
 		super.Init();
-		if (!MRX_GetArsenal())
+		if (!arsenal)
 			return;
 
-		m_MRX_BalanceBar = MRX_ArsenalBalanceBar.Create(m_widget, MRX_GetArsenal());
+		m_MRX_FilterBar = MRX_ArsenalFilterBar.Create(m_widget, m_MRX_Filter, arsenal);
+		if (m_MRX_FilterBar)
+			m_MRX_FilterBar.GetOnChanged().Insert(MRX_OnFilterChanged);
+
+		m_MRX_BalanceBar = MRX_ArsenalBalanceBar.Create(m_widget, arsenal);
 		m_MRX_Wallet = MRX_ClientWallet.GetLocal();
 		if (m_MRX_Wallet)
 			m_MRX_Wallet.GetOnBalanceChanged().Insert(MRX_OnBalanceChanged);
@@ -46,7 +64,79 @@ modded class SCR_InventoryOpenedStorageArsenalUI
 		if (m_MRX_BalanceBar)
 			m_MRX_BalanceBar.Stop();
 
+		if (m_MRX_FilterBar)
+			m_MRX_FilterBar.Stop();
+
 		super.HandlerDeattached(w);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! The catalog items of the chosen category that match the search, in catalog order. The panel lists its slots
+	//! with the arsenal's own storage as pStorage, other calls without one.
+	override protected void GetAllItems(out notnull array<IEntity> pItemsInStorage, BaseInventoryStorageComponent pStorage = null)
+	{
+		MRX_ArsenalShopComponent arsenal = MRX_GetArsenal();
+		ItemPreviewManagerEntity previews = MRX_ScriptedDialog.GetPreviewManager();
+		if ((pStorage && pStorage != m_Storage) || !arsenal || !m_MRX_Filter || !previews)
+		{
+			super.GetAllItems(pItemsInStorage, pStorage);
+			return;
+		}
+
+		// As the vanilla listing of an arsenal storage does.
+		if (pStorage)
+		{
+			m_bIsArsenal = true;
+			if (s_OnArsenalEnter)
+				s_OnArsenalEnter.Invoke();
+		}
+
+		array<MRX_ShopItem> items = {};
+		arsenal.GetListedItems(items);
+		foreach (MRX_ShopItem item : items)
+		{
+			if (m_MRX_Filter.Matches(item))
+				pItemsInStorage.Insert(previews.ResolvePreviewEntityForPrefab(item.m_sPrefab));
+		}
+
+		if (m_MRX_FilterBar)
+			m_MRX_FilterBar.SetShownCount(pItemsInStorage.Count());
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Lists a category (empty for all) and the items matching a search, as if the user had chosen them.
+	void MRX_SetFilter(string category, string text)
+	{
+		if (!m_MRX_Filter)
+			return;
+
+		m_MRX_Filter.SetCategory(category);
+		m_MRX_Filter.SetText(text);
+		if (m_MRX_FilterBar)
+			m_MRX_FilterBar.Sync();
+
+		MRX_OnFilterChanged();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Number of item slots the panel shows, on all pages.
+	int MRX_GetShownCount()
+	{
+		int count;
+		foreach (SCR_InventorySlotUI slot : m_aSlots)
+		{
+			if (slot && slot.GetInventoryItemComponent())
+				count++;
+		}
+
+		return count;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void MRX_OnFilterChanged()
+	{
+		m_iLastShownPage = 0;
+		Refresh();
 	}
 
 	//------------------------------------------------------------------------------------------------

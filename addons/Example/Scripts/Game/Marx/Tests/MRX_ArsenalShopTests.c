@@ -157,13 +157,21 @@ class MRX_Test_ArsenalShopFlow : MRX_TestCase
 	{
 		MRX_ShopCatalog catalog = new MRX_ShopCatalog();
 		catalog.m_aItems = {};
-		catalog.m_aItems.Insert(MRX_ShopItem.Create("rifle", RIFLE, 1000, MRX_Settings.DEFAULT_CURRENCY));
-		catalog.m_aItems.Insert(MRX_ShopItem.Create("scope", OPTIC, 400, MRX_Settings.DEFAULT_CURRENCY));
-		catalog.m_aItems.Insert(MRX_ShopItem.Create("magazine_tracer", MAGAZINE_TRACER, 20, MRX_Settings.DEFAULT_CURRENCY));
-		catalog.m_aItems.Insert(MRX_ShopItem.Create("magazine_ball", MAGAZINE_BALL, 20, MRX_Settings.DEFAULT_CURRENCY));
-		catalog.m_aItems.Insert(MRX_ShopItem.Create("bandage", BANDAGE, 10, MRX_Settings.DEFAULT_CURRENCY));
-		catalog.m_aItems.Insert(MRX_ShopItem.Create("not_for_sale", "{13772C903CB5E4F7}Prefabs/Items/Equipment/Maps/PaperMap_01_folded.et", 0, MRX_Settings.DEFAULT_CURRENCY));
+		AddItem(catalog, "rifle", RIFLE, 1000, "Rifles");
+		AddItem(catalog, "scope", OPTIC, 400, "Optics");
+		AddItem(catalog, "magazine_tracer", MAGAZINE_TRACER, 20, "Ammunition");
+		AddItem(catalog, "magazine_ball", MAGAZINE_BALL, 20, "Ammunition");
+		AddItem(catalog, "bandage", BANDAGE, 10, "Medical");
+		AddItem(catalog, "not_for_sale", "{13772C903CB5E4F7}Prefabs/Items/Equipment/Maps/PaperMap_01_folded.et", 0, "Navigation");
 		return MRX_ShopDefinition.Create("test_arsenal", catalog, 50);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected static void AddItem(notnull MRX_ShopCatalog catalog, string id, ResourceName prefab, int price, string category)
+	{
+		MRX_ShopItem item = MRX_ShopItem.Create(id, prefab, price, MRX_Settings.DEFAULT_CURRENCY);
+		item.m_sCategory = category;
+		catalog.m_aItems.Insert(item);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -394,6 +402,7 @@ class MRX_Test_ArsenalShopFlow : MRX_TestCase
 				// Vanilla rebuilds the storage title on every refresh, e.g. after each trade.
 				panel.Refresh();
 				Check(IsBalanceShown(panel), "panel still shows the balance after a refresh");
+				CheckFilter(SCR_InventoryOpenedStorageArsenalUI.Cast(panel));
 			}
 		}
 
@@ -418,6 +427,39 @@ class MRX_Test_ArsenalShopFlow : MRX_TestCase
 
 		if (finish)
 			Finish();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Categories without a priced item are not offered; search words match names and IDs in any order and case.
+	protected void CheckFilter(SCR_InventoryOpenedStorageArsenalUI panel)
+	{
+		if (!panel)
+			return;
+
+		MRX_ArsenalShopComponent shop = MRX_ArsenalShopComponent.Find(m_Arsenal);
+		if (shop)
+		{
+			array<string> expected = {"Rifles", "Optics", "Ammunition", "Medical"};
+			array<string> categories = shop.GetCategories();
+			bool same = categories.Count() == expected.Count();
+			for (int i = 0; same && i < expected.Count(); i++)
+			{
+				same = categories[i] == expected[i];
+			}
+
+			Check(same, string.Format("categories of the listed items in catalog order, got %1", categories.Count()));
+		}
+
+		panel.MRX_SetFilter("Ammunition", string.Empty);
+		CheckInt(panel.MRX_GetShownCount(), 2, "items of one category");
+		panel.MRX_SetFilter(string.Empty, "TRACER");
+		CheckInt(panel.MRX_GetShownCount(), 1, "search by ID in any case");
+		panel.MRX_SetFilter("Ammunition", "ball magazine");
+		CheckInt(panel.MRX_GetShownCount(), 1, "every search word must match");
+		panel.MRX_SetFilter("Medical", "magazine");
+		CheckInt(panel.MRX_GetShownCount(), 0, "search within the category");
+		panel.MRX_SetFilter(string.Empty, string.Empty);
+		CheckInt(panel.MRX_GetShownCount(), 5, "all items without a filter");
 	}
 
 	//------------------------------------------------------------------------------------------------

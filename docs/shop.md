@@ -66,6 +66,10 @@ What changes on such an arsenal:
   is greyed out when the player cannot pay it; prices of one-cell items are short ("$14k"). Below the items, a balance
   panel shows the player's balance. After a trade it counts to the new value and briefly shows the change ("-$20",
   "+$510"); failures ("Not enough money") and the item count of a sale with contents show in a line below it.
+- Above the items, a filter row narrows the list: a category button drops down the catalog's categories with their item
+  counts (the choice is kept per shop for the session), and a search field keeps the items whose display name or item
+  ID contains every word typed (the inventory's keys are blocked while typing; Enter, Escape or a click elsewhere ends
+  it). Mouse and keyboard only.
 - Buying debits the price and spawns the item where the player dropped it (a bag, a vest pouch, a weapon's attachment
   slot), or into the inventory. Selling buys back the item with everything it holds (attachments, magazines, stored
   items): the price is the sum of their sell prices. Contents the shop does not buy are removed with it and count 0; the
@@ -89,7 +93,8 @@ creates them a few per frame while the local player is within 30 m of the arsena
 rules (faction, rank, ...). `target` (optional, `MRX_ShopStorageTarget.Create(storage)`) is the storage the item goes
 to; `withContents` sells the item with everything it holds (`GetSellPriceWithContents` computes the price). Inventory
 access sits behind `MRX_ShopInventory`; `MRX_EntityShopInventory` is the engine implementation.
-`MRX_ArsenalRequests.Buy`/`Sell` add the arsenal checks.
+`MRX_ArsenalRequests.Buy`/`Sell` add the arsenal checks. `MRX_ArsenalShopComponent.GetListedItems(items)` and
+`GetCategories()` return the catalog entries and categories an arsenal lists.
 
 `MRX_ShopComponent.SetDefinition(definition)` replaces a shop's catalog and settings at runtime (call it with the same
 definition on the server and every client).

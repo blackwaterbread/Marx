@@ -16,6 +16,9 @@ class MRX_ArsenalShopComponent : ScriptComponent
 	protected MRX_ShopComponent m_Shop;
 	protected ref array<ref SCR_ArsenalItem> m_aItems;
 	protected ref map<string, MRX_ShopItem> m_mItems;
+	//! Catalog entries of m_aItems, same order.
+	protected ref array<MRX_ShopItem> m_aListed;
+	protected ref array<string> m_aCategories;
 	protected ref array<string> m_aCurrencies;
 	protected int m_iPreloadIndex = -1;
 
@@ -74,6 +77,27 @@ class MRX_ArsenalShopComponent : ScriptComponent
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! Catalog entries of the items listed in the arsenal window, in list order. eturn Count.
+	int GetListedItems(notnull array<MRX_ShopItem> outItems)
+	{
+		Build();
+		foreach (MRX_ShopItem item : m_aListed)
+		{
+			outItems.Insert(item);
+		}
+
+		return m_aListed.Count();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Categories of the listed items (not empty), in catalog order.
+	array<string> GetCategories()
+	{
+		Build();
+		return m_aCategories;
+	}
+
+	//------------------------------------------------------------------------------------------------
 	//! Currencies of the listed items, in catalog order.
 	array<string> GetCurrencies()
 	{
@@ -89,6 +113,8 @@ class MRX_ArsenalShopComponent : ScriptComponent
 
 		m_aItems = {};
 		m_mItems = new map<string, MRX_ShopItem>();
+		m_aListed = {};
+		m_aCategories = {};
 		m_aCurrencies = {};
 		MRX_ShopDefinition shop = GetShop();
 		if (!shop)
@@ -104,6 +130,10 @@ class MRX_ArsenalShopComponent : ScriptComponent
 			arsenalItem.MRX_SetPrefab(item.m_sPrefab);
 			m_aItems.Insert(arsenalItem);
 			m_mItems.Set(key, item);
+			m_aListed.Insert(item);
+			if (!item.m_sCategory.IsEmpty() && !m_aCategories.Contains(item.m_sCategory))
+				m_aCategories.Insert(item.m_sCategory);
+
 			if (!m_aCurrencies.Contains(item.m_sCurrency))
 				m_aCurrencies.Insert(item.m_sCurrency);
 		}
@@ -114,6 +144,8 @@ class MRX_ArsenalShopComponent : ScriptComponent
 	{
 		m_aItems = null;
 		m_mItems = null;
+		m_aListed = null;
+		m_aCategories = null;
 		m_aCurrencies = null;
 		SCR_ArsenalComponent arsenal = SCR_ArsenalComponent.Cast(GetOwner().FindComponent(SCR_ArsenalComponent));
 		if (arsenal)
