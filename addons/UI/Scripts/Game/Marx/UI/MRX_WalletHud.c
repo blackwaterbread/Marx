@@ -108,7 +108,7 @@ class MRX_WalletHud
 		int now = System.GetTickCount();
 		foreach (string currency, int balance : m_mShownBalances)
 		{
-			string text = string.Format("%1 %2", balance, currency);
+			string text = MRX_TextFormat.Money(balance, currency);
 			int expiry;
 			if (m_mChangeExpiry.Find(currency, expiry) && now < expiry)
 				text += FormatChange(m_mChanges.Get(currency));
@@ -136,8 +136,8 @@ class MRX_WalletHud
 	protected static string FormatChange(int change)
 	{
 		if (change > 0)
-			return string.Format("  (+%1)", change);
+			return string.Format("  (+%1)", MRX_TextFormat.Amount(change));
 
-		return string.Format("  (%1)", change);
+		return string.Format("  (%1)", MRX_TextFormat.Amount(change));
 	}
 }

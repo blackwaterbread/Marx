@@ -123,6 +123,7 @@ class MRX_TestRunner : Managed
 	{
 		s_Instance = new MRX_TestRunner();
 		MRX_WalletMathTests.Register(s_Instance);
+		MRX_TextFormatTests.Register(s_Instance);
 		MRX_EconomyServiceTests.Register(s_Instance);
 		MRX_BootstrapTests.Register(s_Instance);
 		MRX_NativeTests.Register(s_Instance);

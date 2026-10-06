@@ -64,3 +64,5 @@ the answer from `MRX_GetOnShopResult()`.
   library buttons and toolbox, the dialog scroll area, inventory item slots), so no Marx layout asset is needed.
 - `MRX_WalletHud` (`Marx_UI`): balances in the top right corner of the HUD with a short change hint. Mods with their
   own HUD call `MRX_WalletHud.SetEnabled(false)` and use `MRX_ClientWallet` instead.
+- `MRX_TextFormat` (`Marx_UI`): amounts with thousands separators (`Amount(12500)` = "12,500", `Money(12500, "cash")` =
+  "12,500 cash"), as the shop window and the wallet HUD show them. Mods can use it in their own UI.

@@ -490,7 +490,7 @@ class MRX_ShopMenu : MRX_ScriptedDialog
 	//------------------------------------------------------------------------------------------------
 	protected static string FormatPrice(int amount, string currency)
 	{
-		return string.Format("%1 %2", amount, currency);
+		return MRX_TextFormat.Money(amount, currency);
 	}
 
 	//------------------------------------------------------------------------------------------------
