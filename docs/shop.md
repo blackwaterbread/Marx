@@ -16,7 +16,8 @@ Any entity becomes a shop with:
 
 A character can sell too: a character prefab placed without a group has no AI and just stands. Add the shop components
 and `MRX_OpenShopAction` (in one of the character's action contexts, e.g. `default`), and `MRX_ShopKeeperComponent`,
-which turns its damage off so the shop stays open.
+which turns its damage off so the shop stays open. A character inside another entity (e.g. placed in a composition
+prefab) would keep playing its falling animation; the keeper detaches itself from its parent at the start of the game.
 
 ## Catalogs
 
