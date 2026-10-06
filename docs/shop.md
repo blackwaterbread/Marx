@@ -68,7 +68,9 @@ item, e.g. a stash upgrade or a service. Its prefab is optional and only shown. 
    reports that status. Check the conditions again here: other requests may have run since `Check`.
 
 `GetState(playerId, ownerId, item, callback)` returns what the shop window shows for the player
-(`MRX_ShopProductState`: a text such as "3 / 8" and whether the Buy button is on). Products are never bought back and
+(`MRX_ShopProductState`: a text such as "3 / 8" and whether the Buy button is on). The server builds that text, so for
+a translated one return `MRX_TextFormat.PackLocalized("#MYMOD-Shop_Pages", {"3", "8"})`: each client fills the string
+table entry's `%1`, `%2` in its own language. Products are never bought back and
 arsenal shops do not list them. Answers may come right away or on a later frame. Products live in the consumer mod
 when they need other addons; for example a stash page product calls `MRX_StashPages` (`Marx_Stash`).
 
@@ -165,3 +167,7 @@ ms per item, spread over frames; run it in Workbench or a test, not on a live se
   `MRX_TextFormat.SetCurrencyFormat("cash", "$%1")` changes how a currency is shown ("$12,500") on the machine that
   calls it; storage and the API keep the currency ID. Call it on every machine, e.g. in your game mode's `EOnInit`.
   `AmountCompact` and `MoneyCompact` fit amounts in four characters for narrow places ("14k", "$1.5k").
+- Languages: the Marx texts come from the string table `Language/MRX_localization.st` in `Marx_UI` (English and
+  Korean; the other game languages show English). Shop display names, catalog names, descriptions and categories may
+  be string table keys of your mod (e.g. `#MYMOD-Category_Rifles`); they are translated where they are shown. Korean,
+  Japanese and Chinese render because the game swaps every font for its CJK font in those languages.

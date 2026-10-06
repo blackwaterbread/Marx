@@ -47,6 +47,7 @@ tools/           build/validation scripts
 - Mind `ref` ownership on `Managed` members; avoid strong ref cycles.
 - Public API surface lives in `addons/Core/.../API/`. Mark it `v0` until stabilized; breaking changes allowed until `v1`.
 - Code, comments, identifiers: English.
+- UI text: string table keys `#MRX-<Area>_<Name>` in `addons/UI/Language/MRX_localization.st` (English + Korean), never hard-coded English. Texts with values: `WidgetManager.Translate(key, args)`; texts the server builds for clients: `MRX_TextFormat.PackLocalized`. Add entries with the String Editor (or its `LocalizationEditor` script API), then Table > Build Runtime Table.
 
 ## Resources & GUIDs
 - Never invent, copy, or hand-edit resource GUIDs or `.meta` files. Let Workbench generate them.

@@ -34,6 +34,7 @@ stash point; both bring `Marx_UI`, which also shows the balances in the inventor
 - **Storage:** the game's own persistence system (`GamemodeStorage`, committed after every change), with an in-memory
   fallback. A REST backend for shared databases is planned.
 - **Admin:** `#marx balance|give|take` in the chat for logged-in administrators, and over RCON.
+- **Languages:** the default UI is in English and Korean (string tables); other languages show English.
 
 ## Documentation
 
