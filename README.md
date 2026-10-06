@@ -11,7 +11,7 @@ Status: **API v0** (breaking changes are still possible). Target game version: 1
 |---|---|---|
 | `addons/Core` | `Marx_Core` | Economy (wallets, ledger), identity, stash and owned assets, storage backends, client wallet mirror, stash point component and RPCs, admin command, public API (`MRX_Marx`) |
 | `addons/UI` | `Marx_UI` | Default UI building blocks: script-built dialog base, wallet HUD |
-| `addons/Shop` | `Marx_Shop` | Shops (component, catalogs, buy/sell, RPCs), shop dialog, sample catalog and shop table prefab |
+| `addons/Shop` | `Marx_Shop` | Shops (component, catalogs, buy/sell, RPCs), shop dialog, arsenal shop, sample catalog, shop table and arsenal box prefabs |
 | `addons/Stash` | `Marx_Stash` | Stash in the vanilla inventory: stash point action, personal container, stash wardrobe prefab |
 | `addons/Example` | `Marx_Example` | Example consumer code and the Workbench test harness |
 
@@ -23,7 +23,8 @@ stash point; both bring `Marx_UI`, which also shows the wallet HUD.
 - **Wallets:** several currencies (`int` amounts), credit/debit/transfer, limits, per-owner ordering, idempotency keys,
   recent ledger entries per wallet. Balances are pushed to the owning client.
 - **Shops:** a component that turns any entity into a shop, `.conf` catalogs, purchase into the player's inventory,
-  sell-back at a configurable percentage, validators for custom rules.
+  sell-back at a configurable percentage, validators for custom rules. A vanilla arsenal can sell a catalog for Marx
+  money in its own inventory window.
 - **Stash:** a personal stash that opens as its own panel of the vanilla inventory at stash points (pages of cells;
   every item keeps its cell). Stored items keep their attachments, magazines, contents, damage and fuel. Assets move through `STASHED`, `DEPLOYED`, `LOST` and `CONSUMED`; a loss policy decides what happens on death
   and after a server restart.
