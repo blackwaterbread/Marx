@@ -34,7 +34,8 @@ class MRX_SampleAssetsPlugin : WorldEditorPlugin
 			CreateArsenalPrefab(catalog);
 		}
 
-		CreateInteractivePrefab(STASH_PREFAB_FILE, STASH_BASE_PREFAB, "MRX_StashPointComponent", new map<string, string>(), "MRX_Stash", "MRX_OpenStashAction", "Stash", "0 1 0", true);
+		// The wardrobe mesh spans x -1.5..0, y 0..2, z 0..0.76 from its origin: the action sits in its middle.
+		CreateInteractivePrefab(STASH_PREFAB_FILE, STASH_BASE_PREFAB, "MRX_StashPointComponent", new map<string, string>(), "MRX_Stash", "MRX_OpenStashAction", "Stash", "-0.75 1 0.38", true);
 		CreateStashContainerPrefab();
 		Print(TAG + "sample assets done");
 	}
