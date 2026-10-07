@@ -24,7 +24,17 @@ class MRX_EntitySnapshots
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Puts a loadout (CaptureLoadout) on a character: items of the loadout storages the loadout does not list are
+	//! Gear of a character like CaptureLoadout, but with its exact state (ammo, damage, issued marks), e.g. to give a
+	//! player back the gear they left with (API v0).
+	static MRX_ItemSnapshot CaptureLoadoutState(notnull IEntity character)
+	{
+		MRX_ItemSnapshot snapshot = MRX_ItemSnapshot.Create(SCR_ResourceNameUtils.GetPrefabName(character));
+		CaptureInto(character, snapshot, GetLoadoutStorages(character), false);
+		return snapshot;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Puts a loadout (CaptureLoadout or CaptureLoadoutState) on a character: items of the loadout storages the loadout does not list are
 	//! deleted, items of the same prefab in the same slot kept (with the loadout's state), missing ones spawned.
 	//! \return False when part of the loadout could not be put on.
 	static bool ApplyLoadout(notnull IEntity character, notnull MRX_ItemSnapshot loadout, notnull InventoryStorageManagerComponent manager)
