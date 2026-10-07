@@ -10,6 +10,7 @@ class MRX_NativeTests
 	{
 		runner.Add(new MRX_Test_NativeRoundTrip());
 		runner.Add(new MRX_Test_NativeCommitFailure());
+		runner.Add(new MRX_Test_NativeCommitAfterSave());
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -39,13 +40,47 @@ class MRX_TestFailingNativeBackend : MRX_NativeBackend
 		m_bCommitting = true;
 		m_aCommitting = m_aCommitQueue;
 		m_aCommitQueue = {};
+		m_CommitId = new MRX_NativeCommitId();
 		GetGame().GetCallqueue().CallLater(SimulateFailedCommit);
 	}
 
 	//------------------------------------------------------------------------------------------------
 	protected void SimulateFailedCommit()
 	{
-		OnCommitted(EPersistenceStatusCode.WRITE_ERROR, null);
+		OnCommitted(EPersistenceStatusCode.WRITE_ERROR, m_CommitId);
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Native backend whose next commit never answers, as when a game save already wrote its changes, and a game save
+//! completes meanwhile.
+class MRX_TestSavedNativeBackend : MRX_NativeBackend
+{
+	bool m_bSaveNextCommit = true;
+
+	//------------------------------------------------------------------------------------------------
+	override protected void StartCommit()
+	{
+		if (!m_bSaveNextCommit)
+		{
+			super.StartCommit();
+			return;
+		}
+
+		m_bSaveNextCommit = false;
+		m_bCommitting = true;
+		m_aCommitting = m_aCommitQueue;
+		m_aCommitQueue = {};
+		m_iCommitSaveMark = m_iQueueSaveMark;
+		m_CommitId = new MRX_NativeCommitId();
+		GetGame().GetCallqueue().CallLater(OnCommitTimeout, COMMIT_TIMEOUT_MS);
+		GetGame().GetCallqueue().CallLater(SimulateGameSave);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void SimulateGameSave()
+	{
+		OnGameSaved(ESaveGameType.AUTO, true);
 	}
 }
 
@@ -180,6 +215,61 @@ class MRX_Test_NativeCommitFailure : MRX_TestCase
 		if (!result.m_aEntries.IsEmpty())
 			CheckInt(result.m_aEntries[0].m_iBalanceAfter, m_iBalanceBefore + 5, "balance after retry");
 
+		Finish();
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! A commit that never answers while a game save completes counts as written: the credit succeeds soon after the save,
+//! long before the commit timeout.
+class MRX_Test_NativeCommitAfterSave : MRX_TestCase
+{
+	protected static const string OWNER = "marx-test:native-commit-after-save";
+	//! Well below the commit timeout of the backend.
+	protected static const int MAX_WAIT_MS = 4000;
+
+	protected ref MRX_EconomyService m_Service;
+	protected int m_iBalanceBefore;
+	protected int m_iStartTick;
+
+	//------------------------------------------------------------------------------------------------
+	override protected void Run()
+	{
+		if (!MRX_NativeBackend.IsAvailable())
+		{
+			Skip("no Marx persistence config in this world");
+			return;
+		}
+
+		m_Service = new MRX_EconomyService(new MRX_TestSavedNativeBackend(), MRX_TestUtils.CreateRules());
+		m_Service.Init();
+
+		MRX_BalanceCallback callback = new MRX_BalanceCallback();
+		callback.GetOnResult().Insert(OnBalanceBefore);
+		m_Service.GetBalance(OWNER, "cash", callback);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnBalanceBefore(MRX_ETxStatus status, int balance)
+	{
+		CheckStatus(status, MRX_ETxStatus.OK, "balance before");
+		m_iBalanceBefore = balance;
+		m_iStartTick = System.GetTickCount();
+
+		MRX_TxCallback callback = new MRX_TxCallback();
+		callback.GetOnResult().Insert(OnCredited);
+		m_Service.Credit(OWNER, "cash", 3, MRX_TxContext.Create("test", "commit after save", MRX_NativeTests.UniqueKey("after-save")), callback);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnCredited(MRX_TxResult result)
+	{
+		int waitedMs = System.GetTickCount() - m_iStartTick;
+		CheckStatus(result.m_eStatus, MRX_ETxStatus.OK, "credit whose changes a game save wrote");
+		if (!result.m_aEntries.IsEmpty())
+			CheckInt(result.m_aEntries[0].m_iBalanceAfter, m_iBalanceBefore + 3, "balance after credit");
+
+		Check(waitedMs < MAX_WAIT_MS, string.Format("finished soon after the save (%1 ms)", waitedMs));
 		Finish();
 	}
 }

@@ -11,6 +11,8 @@ class MRX_NativeBackend : MRX_StorageBackend
 	protected static const int READY_POLL_MS = 250;
 	protected static const int READY_TIMEOUT_MS = 60000;
 	protected static const int COMMIT_TIMEOUT_MS = 10000;
+	//! How long a commit may still answer after a game save wrote its changes (then it never does).
+	protected static const int COMMIT_AFTER_SAVE_MS = 2000;
 
 	protected ref MRX_StorageRules m_Rules;
 	protected ref MRX_StatusCallback m_InitCallback;
@@ -26,8 +28,25 @@ class MRX_NativeBackend : MRX_StorageBackend
 
 	protected ref array<ref MRX_NativeOp> m_aCommitQueue = {};
 	protected ref array<ref MRX_NativeOp> m_aCommitting = {};
+	//! Identifies the commit in flight in its answer (the callback's context).
+	protected ref MRX_NativeCommitId m_CommitId;
 	protected ref PersistenceStatusCallback m_CommitCallback;
+	//! Kept until the next commit ends: it may still be running, or answer late.
+	protected ref PersistenceStatusCallback m_PreviousCommitCallback;
 	protected bool m_bCommitting;
+	//! Game saves completed successfully. They write the Marx states too.
+	protected int m_iSavesCompleted;
+	//! m_iSavesCompleted when the first op of the queue, or of the commit in flight, staged its states.
+	protected int m_iQueueSaveMark;
+	protected int m_iCommitSaveMark;
+
+	//------------------------------------------------------------------------------------------------
+	void ~MRX_NativeBackend()
+	{
+		SCR_PersistenceSystem persistence = SCR_PersistenceSystem.GetScriptedInstance();
+		if (persistence)
+			persistence.GetOnAfterSave().Remove(OnGameSaved);
+	}
 
 	//------------------------------------------------------------------------------------------------
 	//! True when the running world has a persistence system with the Marx wallet collection.
@@ -255,6 +274,9 @@ class MRX_NativeBackend : MRX_StorageBackend
 	//! Internal: commits the staged states of the op, batched with other ops waiting for a commit.
 	void RequestCommit(notnull MRX_NativeOp op)
 	{
+		if (m_aCommitQueue.IsEmpty())
+			m_iQueueSaveMark = m_iSavesCompleted;
+
 		m_aCommitQueue.Insert(op);
 		if (!m_bCommitting)
 			StartCommit();
@@ -280,16 +302,22 @@ class MRX_NativeBackend : MRX_StorageBackend
 		m_bCommitting = true;
 		m_aCommitting = m_aCommitQueue;
 		m_aCommitQueue = {};
+		m_iCommitSaveMark = m_iQueueSaveMark;
 
-		m_CommitCallback = new PersistenceStatusCallback(OnCommitted);
-		GetGame().GetCallqueue().CallLater(OnCommitTimeout, COMMIT_TIMEOUT_MS);
+		m_CommitId = new MRX_NativeCommitId();
+		m_CommitCallback = new PersistenceStatusCallback(OnCommitted, m_CommitId);
+		int timeoutMs = COMMIT_TIMEOUT_MS;
+		if (m_iSavesCompleted > m_iCommitSaveMark)
+			timeoutMs = COMMIT_AFTER_SAVE_MS;
+
+		GetGame().GetCallqueue().CallLater(OnCommitTimeout, timeoutMs);
 		PersistenceSystem.GetInstance().CommitStorage(GamemodeStorage, m_CommitCallback);
 	}
 
 	//------------------------------------------------------------------------------------------------
 	protected void OnCommitted(EPersistenceStatusCode statusCode, Managed context)
 	{
-		if (!m_bCommitting)
+		if (!m_bCommitting || !context || context != m_CommitId)
 		{
 			Print(string.Format("[MRX] Late wallet commit result %1 (after timeout)", typename.EnumToString(EPersistenceStatusCode, statusCode)), LogLevel.WARNING);
 			return;
@@ -308,14 +336,42 @@ class MRX_NativeBackend : MRX_StorageBackend
 		if (!m_bCommitting)
 			return;
 
+		// CommitStorage never answers when there is nothing left to write: a game save after the ops staged their
+		// states wrote them.
+		if (m_iSavesCompleted > m_iCommitSaveMark)
+		{
+			Print("[MRX] Wallet commit: a game save already stored the changes", LogLevel.NORMAL);
+			FinishCommit(true, false);
+			return;
+		}
+
 		Print(string.Format("[MRX] Wallet commit did not answer within %1 ms, outcome unknown", COMMIT_TIMEOUT_MS), LogLevel.ERROR);
 		FinishCommit(false, true);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! A game save (save point) also writes the Marx states.
+	protected void OnGameSaved(ESaveGameType saveType, bool success)
+	{
+		if (!success)
+			return;
+
+		m_iSavesCompleted++;
+		// The commit in flight may have nothing left to write now and then never answers: check it soon.
+		if (m_bCommitting)
+		{
+			GetGame().GetCallqueue().Remove(OnCommitTimeout);
+			GetGame().GetCallqueue().CallLater(OnCommitTimeout, COMMIT_AFTER_SAVE_MS);
+		}
 	}
 
 	//------------------------------------------------------------------------------------------------
 	protected void FinishCommit(bool success, bool timedOut)
 	{
 		m_bCommitting = false;
+		m_CommitId = null;
+		m_PreviousCommitCallback = m_CommitCallback;
+		m_CommitCallback = null;
 		array<ref MRX_NativeOp> committed = m_aCommitting;
 		m_aCommitting = {};
 		foreach (MRX_NativeOp op : committed)
@@ -433,6 +489,10 @@ class MRX_NativeBackend : MRX_StorageBackend
 				m_StashFallback.Init(m_Rules, new MRX_StatusCallback());
 			}
 
+			SCR_PersistenceSystem scripted = SCR_PersistenceSystem.GetScriptedInstance();
+			if (scripted)
+				scripted.GetOnAfterSave().Insert(OnGameSaved);
+
 			m_CallQueue.PostStatus(m_InitCallback, MRX_ETxStatus.OK);
 			return;
 		}
@@ -483,6 +543,12 @@ class MRX_NativeWalletLink : Managed
 		link.m_Wallet = wallet;
 		return link;
 	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Identifies one commit of the native backend in its answer. Internal.
+class MRX_NativeCommitId : Managed
+{
 }
 
 //------------------------------------------------------------------------------------------------
