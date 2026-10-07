@@ -24,11 +24,11 @@ addons/UI/       gproj ID Marx_UI       shared default UI: dialog base, inventor
 addons/Shop/     gproj ID Marx_Shop     shop logic, catalogs, products, shop keepers, arsenal shop, shop UI, prefabs (depends on Core, UI)
 addons/Stash/    gproj ID Marx_Stash    stash point action, stash panel, pages, loadouts, prefabs (depends on Core, UI)
 addons/Example/  gproj ID Marx_Example  minimal consumer sample, Workbench test harness
-assets-src/      raw sources (outside gproj dirs = not packed)
+assets/          images/ (Workshop previews), src/ (raw sources); outside gproj dirs = not packed
 tools/           build/validation scripts
 ```
 - Dependency direction: Example → Shop, Stash → UI → Core. Core must never reference UI/Shop/Stash/Example; Shop and Stash must not reference each other.
-- Everything inside an addon dir gets packed. Keep raw sources in `assets-src/`.
+- Everything inside an addon dir gets packed. Keep raw sources in `assets/src/` and images in `assets/images/`.
 
 ## Architecture rules (non-negotiable)
 - Server-authoritative. Clients only send requests via RPC; RPCs carry IDs, never prices/amounts/permissions. Server resolves everything from config/state.
