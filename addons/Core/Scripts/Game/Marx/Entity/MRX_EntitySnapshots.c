@@ -113,7 +113,7 @@ class MRX_EntitySnapshots
 				existing.Take(child.m_iSlot, current);
 				if (current && SCR_ResourceNameUtils.GetPrefabName(current) != child.m_sPrefab)
 				{
-					manager.TryDeleteItem(current);
+					DeleteItem(current, manager);
 					current = null;
 				}
 
@@ -138,7 +138,7 @@ class MRX_EntitySnapshots
 			foreach (int slotId, IEntity leftover : existing)
 			{
 				if (leftover)
-					manager.TryDeleteItem(leftover);
+					DeleteItem(leftover, manager);
 			}
 		}
 
@@ -152,6 +152,15 @@ class MRX_EntitySnapshots
 		}
 
 		return complete;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Removes an item through the inventory, or deletes it directly when the inventory refuses: e.g. the weapon of a
+	//! character that is being prepared for a spawn, before the player takes control.
+	protected static void DeleteItem(notnull IEntity item, notnull InventoryStorageManagerComponent manager)
+	{
+		if (!manager.TryDeleteItem(item))
+			RplComponent.DeleteRplEntity(item, false);
 	}
 
 	//------------------------------------------------------------------------------------------------
