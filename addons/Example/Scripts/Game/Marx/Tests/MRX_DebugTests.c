@@ -134,7 +134,7 @@ class MRX_Test_DebugArgs : MRX_TestCase
 }
 
 //------------------------------------------------------------------------------------------------
-//! A second action with a taken ID is refused and the first one stays.
+//! A second action with a taken ID is refused and the first one stays; the loaded actions accept their defaults.
 class MRX_Test_DebugRegistry : MRX_TestCase
 {
 	//------------------------------------------------------------------------------------------------
@@ -149,7 +149,39 @@ class MRX_Test_DebugRegistry : MRX_TestCase
 
 		array<string> ids = {};
 		CheckInt(registry.GetIds(ids), 1, "registered IDs");
+		CheckDefaults();
 		Finish();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Every action of the loaded addons accepts its own defaults (e.g. no word as the default of a whole number).
+	protected void CheckDefaults()
+	{
+		MRX_DebugRegistry registry = MRX_DebugRegistry.Get();
+		array<string> ids = {};
+		registry.GetIds(ids);
+		Check(!ids.IsEmpty(), "the loaded addons register actions");
+		array<ref MRX_DebugArg> args = {};
+		foreach (string id : ids)
+		{
+			MRX_DebugAction action = registry.Find(id);
+			action.GetArgs(args);
+			array<string> words = {};
+			foreach (MRX_DebugArg arg : args)
+			{
+				if (!arg.IsRequired())
+					words.Insert(string.Empty);
+				else if (arg.m_bInt)
+					words.Insert("1");
+				else
+					words.Insert("x");
+			}
+
+			array<string> values = {};
+			string error;
+			MRX_EDebugStatus status = MRX_DebugArgs.Parse(action, words, 0, values, error);
+			Check(status == MRX_EDebugStatus.OK, string.Format("%1 accepts its defaults: %2", id, error));
+		}
 	}
 }
 

@@ -94,5 +94,18 @@ class MRX_DebugRegistry : Managed
 	protected void RegisterActions()
 	{
 		Register(new MRX_DebugMarxInfo());
+		Register(new MRX_DebugMarxChar());
+		Register(new MRX_DebugMarxItem());
+		Register(new MRX_DebugMarxInventory());
+		Register(new MRX_DebugMarxClose());
+		Register(new MRX_DebugMarxPause());
+		Register(new MRX_DebugMarxEquip());
+		Register(new MRX_DebugMarxHands());
+		Register(new MRX_DebugMarxGear());
+		Register(new MRX_DebugMarxView());
+		Register(new MRX_DebugMarxKill());
+		Register(new MRX_DebugWalletGive());
+		Register(new MRX_DebugWalletTake());
+		Register(new MRX_DebugWalletHistory());
 	}
 }

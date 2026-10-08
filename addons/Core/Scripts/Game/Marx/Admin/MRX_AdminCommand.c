@@ -219,7 +219,7 @@ class MRX_AdminCommand : ScrServerCommand
 
 	//------------------------------------------------------------------------------------------------
 	//! \return Amount, or 0 when the text is not a whole number in range.
-	protected static int ParseAmount(string text)
+	static int ParseAmount(string text)
 	{
 		if (text.IsEmpty() || text.Length() > MAX_AMOUNT_DIGITS || !SCR_StringHelper.IsFormat(SCR_EStringFormat.DIGITS_ONLY, text))
 			return 0;
@@ -230,7 +230,7 @@ class MRX_AdminCommand : ScrServerCommand
 	//------------------------------------------------------------------------------------------------
 	//! \return The currency to use, or empty when it is unknown. Without a currency argument: the default currency
 	//! when it exists, otherwise the only configured currency.
-	protected static string ResolveCurrency(notnull MRX_EconomyService economy, string currency)
+	static string ResolveCurrency(notnull MRX_EconomyService economy, string currency)
 	{
 		MRX_CurrencyRegistry currencies = economy.GetRules().m_Currencies;
 		if (!currency.IsEmpty())
