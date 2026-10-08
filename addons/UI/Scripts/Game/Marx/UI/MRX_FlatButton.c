@@ -8,7 +8,10 @@ class MRX_FlatButton : Managed
 	protected ButtonWidget m_wButton;
 	protected Widget m_wFrame;
 	protected Widget m_wFill;
+	//! Label and icon, centred in the button.
+	protected Widget m_wContent;
 	protected TextWidget m_wLabel;
+	protected ImageWidget m_wIcon;
 	protected ref MRX_FlatButtonHandler m_Handler;
 	protected ref ScriptInvokerBase<MRX_FlatButtonDelegate> m_OnClicked;
 	protected bool m_bEnabled = true;
@@ -45,6 +48,27 @@ class MRX_FlatButton : Managed
 	void SetLabel(string label)
 	{
 		m_wLabel.SetText(label);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Shows an icon after the label, e.g. an arrow for a button that opens something.
+	void SetTrailingIcon(ResourceName imageset, string image, float size = 16)
+	{
+		if (!m_wContent)
+			return;
+
+		if (!m_wIcon)
+		{
+			// Blended, so the icon's transparent parts stay transparent.
+			int flags = MRX_UIStyle.DECOR | WidgetFlags.BLEND | WidgetFlags.STRETCH;
+			m_wIcon = ImageWidget.Cast(MRX_UIStyle.CreateWidget(WidgetType.ImageWidgetTypeID, Color.FromInt(Color.WHITE), m_wContent, flags));
+			LayoutSlot.SetVerticalAlign(m_wIcon, LayoutVerticalAlign.Center);
+			AlignableSlot.SetPadding(m_wIcon, 8, 0, 0, 0);
+		}
+
+		m_wIcon.LoadImageFromSet(0, imageset, image);
+		m_wIcon.SetSize(size, size);
+		UpdateLook();
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -122,10 +146,12 @@ class MRX_FlatButton : Managed
 		MRX_UIStyle.Stretch(m_wFill);
 		AlignableSlot.SetPadding(m_wFill, 1, 1, 1, 1);
 
-		m_wLabel = MRX_UIStyle.CreateText(box, label, fontSize, Color.FromInt(Color.WHITE), true);
-		AlignableSlot.SetHorizontalAlign(m_wLabel, LayoutHorizontalAlign.Center);
-		AlignableSlot.SetVerticalAlign(m_wLabel, LayoutVerticalAlign.Center);
-		AlignableSlot.SetPadding(m_wLabel, 14, 0, 14, 0);
+		m_wContent = MRX_UIStyle.CreateWidget(WidgetType.HorizontalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), box);
+		AlignableSlot.SetHorizontalAlign(m_wContent, LayoutHorizontalAlign.Center);
+		AlignableSlot.SetVerticalAlign(m_wContent, LayoutVerticalAlign.Center);
+		AlignableSlot.SetPadding(m_wContent, 14, 0, 14, 0);
+		m_wLabel = MRX_UIStyle.CreateText(m_wContent, label, fontSize, Color.FromInt(Color.WHITE), true);
+		LayoutSlot.SetVerticalAlign(m_wLabel, LayoutVerticalAlign.Center);
 		UpdateLook();
 	}
 
@@ -153,10 +179,16 @@ class MRX_FlatButton : Managed
 		m_wFill.SetColor(fill);
 		m_wFrame.SetColor(frame);
 		m_wLabel.SetColor(text);
-		if (m_bEnabled)
-			m_wLabel.SetOpacity(1);
-		else
-			m_wLabel.SetOpacity(0.35);
+		float opacity = 1;
+		if (!m_bEnabled)
+			opacity = 0.35;
+
+		m_wLabel.SetOpacity(opacity);
+		if (m_wIcon)
+		{
+			m_wIcon.SetColor(text);
+			m_wIcon.SetOpacity(opacity);
+		}
 	}
 }
 

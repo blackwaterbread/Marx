@@ -15,6 +15,7 @@ class MRX_LoadoutTests
 	{
 		runner.Add(new MRX_Test_StashProperties());
 		runner.Add(new MRX_Test_LoadoutPlan());
+		runner.Add(new MRX_Test_LoadoutSlots());
 		runner.Add(new MRX_Test_IssuedItems());
 		runner.Add(new MRX_Test_LoadoutFlow());
 	}
@@ -120,7 +121,8 @@ class MRX_Test_StashProperties : MRX_TestCase
 
 //------------------------------------------------------------------------------------------------
 //! The player's own items are used again, missing ones bought, the others sold; items neither owned nor for sale are
-//! left out with their contents; the price of items that did not arrive is refunded.
+//! left out with their contents; the price of items that did not arrive is refunded. With the stash, missing items come
+//! from it first and the others are stored.
 class MRX_Test_LoadoutPlan : MRX_TestCase
 {
 	protected static const ResourceName UNKNOWN_VEST = "Prefabs/Test/UnknownVest.et";
@@ -179,6 +181,32 @@ class MRX_Test_LoadoutPlan : MRX_TestCase
 		Check(plan.IsSameAs(MRX_LoadoutMath.Plan(loadout, rich, prices)), "same input, same plan");
 		Check(!plan.IsSameAs(MRX_LoadoutMath.Plan(loadout, ownItems, prices)), "other gear, other plan");
 
+		// With the stash: missing items come from it before they are bought, even when not for sale; the compass is stored.
+		array<ResourceName> stashItems = {MRX_LoadoutTests.RIFLE, MRX_LoadoutTests.SCOPE, MRX_LoadoutTests.BANDAGE, MRX_LoadoutTests.BANDAGE};
+		plan = MRX_LoadoutMath.Plan(loadout, ownItems, prices, stashItems);
+		CheckInt(plan.m_iReusedCount, 5, "stash: own items used first");
+		CheckInt(plan.m_iStashCount, 3, "stash: rifle, scope, bandage from the stash");
+		CheckInt(plan.m_iBoughtCount, 1, "stash: 1 magazine bought");
+		CheckInt(plan.m_iStoredCount, 1, "stash: compass stored");
+		CheckInt(plan.m_iSoldCount, 0, "stash: nothing sold");
+		CheckInt(plan.GetNet(), 20, "stash: the magazine paid, nothing received");
+		CheckInt(plan.m_iUnavailableCount, 0, "stash: the scope comes from the stash");
+		Check(!plan.IsSameAs(MRX_LoadoutMath.Plan(loadout, ownItems, prices)), "with and without the stash, other plans");
+		CheckInt(MRX_LoadoutMath.Plan(loadout, ownItems, prices, {}).GetNet(), 628, "empty stash: all bought, the compass stored, not sold");
+
+		// The rifle and a magazine did not arrive: the rifle stays in the stash, the magazine is refunded.
+		map<string, int> stashNeeded = new map<string, int>();
+		MRX_LoadoutMath.CountItems(plan.m_Loadout, stashNeeded);
+		map<string, int> stashReceived = new map<string, int>();
+		stashReceived.Copy(stashNeeded);
+		string rifleKey = MRX_LoadoutMath.GetPrefabKey(MRX_LoadoutTests.RIFLE);
+		string magazineKey = MRX_LoadoutMath.GetPrefabKey(MRX_LoadoutTests.MAGAZINE);
+		stashReceived.Set(rifleKey, 0);
+		stashReceived.Set(magazineKey, stashReceived.Get(magazineKey) - 1);
+		CheckInt(plan.GetStashTake(rifleKey, stashReceived, stashNeeded), 0, "rifle not received, not taken from the stash");
+		CheckInt(plan.GetStashTake(MRX_LoadoutMath.GetPrefabKey(MRX_LoadoutTests.SCOPE), stashReceived, stashNeeded), 1, "scope taken from the stash");
+		CheckInt(plan.GetShortfallPrice(stashReceived, stashNeeded), 20, "magazine refunded, rifle not (from the stash)");
+
 		CheckInt(MRX_LoadoutMath.MultiplyCapped(int.MAX, 2), int.MAX, "price overflow capped");
 		CheckInt(MRX_LoadoutMath.AddCapped(int.MAX, 1), int.MAX, "sum overflow capped");
 		Finish();
@@ -190,6 +218,128 @@ class MRX_Test_LoadoutPlan : MRX_TestCase
 		MRX_ItemSnapshot child = MRX_ItemSnapshot.Create(prefab);
 		parent.m_aChildren.Insert(child);
 		return child;
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Loadout slots of an owner: the base slots plus the extra slots of the stash property, at most MAX_SLOTS. Adding a
+//! slot stops at the maximum.
+class MRX_Test_LoadoutSlots : MRX_TestCase
+{
+	static const string OWNER = "mrx-test:loadout-slots";
+
+	protected ref MRX_TestLoadoutSlotsReply m_Reply;
+	protected ref MRX_StashResultCallback m_ResetCallback;
+	protected int m_iBaseSlots;
+	protected int m_iMaxSlots;
+	protected bool m_bEnding;
+
+	//------------------------------------------------------------------------------------------------
+	override int GetTimeoutMs()
+	{
+		return 15000;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void Run()
+	{
+		m_iBaseSlots = MRX_LoadoutSlots.GetBaseSlots();
+		m_iMaxSlots = MRX_LoadoutSlots.GetMaxSlots();
+		if (!MRX_Marx.GetStash() || m_iBaseSlots <= 0 || m_iMaxSlots <= m_iBaseSlots)
+		{
+			Skip("no stash service, loadouts off or no room for extra slots");
+			return;
+		}
+
+		MRX_StorageRules rules = MRX_TestUtils.CreateRules();
+		MRX_StashRecord record = MRX_StashRecord.Create(OWNER);
+		CheckInt(MRX_LoadoutSlots.GetSlots(record), m_iBaseSlots, "base slots without extra slots");
+		SetExtra(record, rules, "1", "2");
+		CheckInt(MRX_LoadoutSlots.GetSlots(record), Math.Min(m_iMaxSlots, m_iBaseSlots + 2), "base and extra slots");
+		SetExtra(record, rules, "2", "99");
+		CheckInt(MRX_LoadoutSlots.GetSlots(record), m_iMaxSlots, "at most the maximum");
+		SetExtra(record, rules, "3", "-4");
+		CheckInt(MRX_LoadoutSlots.GetSlots(record), m_iBaseSlots, "negative extra slots ignored");
+
+		Reset(false);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void SetExtra(MRX_StashRecord record, MRX_StorageRules rules, string key, string value)
+	{
+		MRX_StashRequest request = MRX_StashTests.CreateRequest(record.m_sOwnerId, key);
+		request.m_aPropertyChanges.Insert(MRX_PropertyChange.Create(MRX_LoadoutSlots.PROPERTY, value));
+		MRX_StashMath.Apply(record, request, rules);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Starts the stored part one slot below the maximum, or ends it removing the test owner's extra slots.
+	protected void Reset(bool ending)
+	{
+		m_bEnding = ending;
+		string extra;
+		if (!ending)
+			extra = (m_iMaxSlots - m_iBaseSlots - 1).ToString();
+
+		m_ResetCallback = new MRX_StashResultCallback();
+		m_ResetCallback.GetOnResult().Insert(OnReset);
+		MRX_Marx.GetStash().SetProperty(OWNER, MRX_PropertyChange.Create(MRX_LoadoutSlots.PROPERTY, extra), CreateContext(), m_ResetCallback);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnReset(MRX_StashResult result)
+	{
+		if (m_bEnding)
+		{
+			Finish();
+			return;
+		}
+
+		m_Reply = new MRX_TestLoadoutSlotsReply();
+		m_Reply.m_OnResult.Insert(OnAdded);
+		MRX_LoadoutSlots.AddSlots(OWNER, 1, CreateContext(), m_Reply);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnAdded(MRX_EStashStatus status, bool limitReached, int slots)
+	{
+		CheckInt(status, MRX_EStashStatus.OK, "slot added");
+		Check(!limitReached, "below the maximum");
+		CheckInt(slots, m_iMaxSlots, "slots after adding");
+
+		m_Reply = new MRX_TestLoadoutSlotsReply();
+		m_Reply.m_OnResult.Insert(OnAddedAtMaximum);
+		MRX_LoadoutSlots.AddSlots(OWNER, 1, CreateContext(), m_Reply);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnAddedAtMaximum(MRX_EStashStatus status, bool limitReached, int slots)
+	{
+		Check(limitReached, "refused at the maximum");
+		CheckInt(slots, m_iMaxSlots, "slots at the maximum");
+		Reset(true);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected static MRX_TxContext CreateContext()
+	{
+		return MRX_TxContext.Create("test", "loadout slots", "test:" + MRX_Marx.NewId());
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+void MRX_TestLoadoutSlotsDelegate(MRX_EStashStatus status, bool limitReached, int slots);
+typedef func MRX_TestLoadoutSlotsDelegate;
+
+//------------------------------------------------------------------------------------------------
+class MRX_TestLoadoutSlotsReply : MRX_LoadoutSlotsCallback
+{
+	ref ScriptInvokerBase<MRX_TestLoadoutSlotsDelegate> m_OnResult = new ScriptInvokerBase<MRX_TestLoadoutSlotsDelegate>();
+
+	//------------------------------------------------------------------------------------------------
+	override void OnResult(MRX_EStashStatus status, bool limitReached, int slots)
+	{
+		m_OnResult.Invoke(status, limitReached, slots);
 	}
 }
 
@@ -340,7 +490,9 @@ class MRX_Test_IssuedItems : MRX_TestCase
 
 //------------------------------------------------------------------------------------------------
 //! At an open stash: save the gear into the last slot, lose the rifle and a magazine and take a compass, put the
-//! loadout on: the rifle and the magazine are bought, the compass sold, the gear is the saved one again.
+//! loadout on: the rifle and the magazine are bought, the compass sold, the gear is the saved one again. Then put the
+//! rifle into the stash, take a compass and put the loadout on using the stash: the rifle comes back from the stash,
+//! the compass goes into it, nothing is paid.
 class MRX_Test_LoadoutFlow : MRX_TestCase
 {
 	protected static const int STEP_MS = 700;
@@ -361,6 +513,10 @@ class MRX_Test_LoadoutFlow : MRX_TestCase
 	protected ref array<IEntity> m_aBaseline = {};
 	protected ref map<ResourceName, int> m_mSavedCounts = new map<ResourceName, int>();
 	protected ref array<IEntity> m_aAdded = {};
+	//! Items lying in the stash before its part of the test.
+	protected ref array<IEntity> m_aStashBaseline = {};
+	protected int m_iStashedRifles;
+	protected int m_iStashedCompasses;
 	protected ref MRX_TestLoadoutReply m_Reply;
 	protected ref MRX_StashCallback m_ListCallback;
 	protected ref MRX_BalanceCallback m_BalanceCallback;
@@ -554,6 +710,96 @@ class MRX_Test_LoadoutFlow : MRX_TestCase
 	protected void OnBalanceAfter(MRX_ETxStatus status, int balance)
 	{
 		CheckInt(m_iBalanceBefore - balance, m_iExpectedNet, "balance change");
+		MRX_StashSession session = MRX_StashSessions.Get().Find(m_iPlayerId);
+		IEntity rifle = FindCarried(MRX_LoadoutTests.RIFLE);
+		if (!session || !session.GetStorage() || !rifle)
+		{
+			Check(false, "stash open and rifle carried before loading with the stash");
+			RestoreSlot();
+			return;
+		}
+
+		GetStashRoots(m_aStashBaseline);
+		Check(GetCharacterManager().TryMoveItemToStorage(rifle, session.GetStorage()), "rifle put into the stash");
+		m_aAdded.Insert(MRX_Test_IssuedItems.SpawnInto(GetCharacterManager(), MRX_LoadoutTests.COMPASS));
+		m_iStashedRifles = CountStashed(MRX_LoadoutTests.RIFLE);
+		m_iStashedCompasses = CountStashed(MRX_LoadoutTests.COMPASS);
+		GetGame().GetCallqueue().CallLater(LoadWithStash, STEP_MS);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void LoadWithStash()
+	{
+		m_BalanceCallback = new MRX_BalanceCallback();
+		m_BalanceCallback.GetOnResult().Insert(OnStashBalanceBefore);
+		MRX_Marx.GetEconomy().GetBalance(m_sOwnerId, "cash", m_BalanceCallback);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnStashBalanceBefore(MRX_ETxStatus status, int balance)
+	{
+		m_iBalanceBefore = balance;
+		m_Reply = new MRX_TestLoadoutReply();
+		m_Reply.m_OnResult.Insert(OnStashLoaded);
+		MRX_Loadouts.Get().Load(m_iPlayerId, m_iSlot, m_Reply, true);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnStashLoaded(MRX_LoadoutResult result)
+	{
+		CheckLoadoutStatus(result, MRX_ELoadoutStatus.OK, "load with the stash");
+		if (result)
+		{
+			CheckInt(result.m_iNet, 0, "with the stash: nothing to pay");
+			CheckInt(result.m_iStoredCount, 1, "with the stash: compass stored");
+			Check(result.m_iFromStashCount >= 1, "with the stash: rifle taken from the stash");
+		}
+
+		foreach (ResourceName prefab, int count : m_mSavedCounts)
+		{
+			CheckInt(CountCarried(prefab), count, "with the stash, carried as saved: " + FilePath.StripPath(prefab));
+		}
+
+		CheckInt(CountStashed(MRX_LoadoutTests.RIFLE), m_iStashedRifles - 1, "rifle taken out of the stash");
+		CheckInt(CountStashed(MRX_LoadoutTests.COMPASS), m_iStashedCompasses + 1, "compass put into the stash");
+
+		array<IEntity> items = {};
+		MRX_EntitySnapshots.GetLoadoutItems(m_Possession.GetCharacter(), items);
+		foreach (IEntity item : items)
+		{
+			if (!m_aBaseline.Contains(item) && !m_aAdded.Contains(item))
+				m_aAdded.Insert(item);
+		}
+
+		m_BalanceCallback = new MRX_BalanceCallback();
+		m_BalanceCallback.GetOnResult().Insert(OnStashBalanceAfter);
+		MRX_Marx.GetEconomy().GetBalance(m_sOwnerId, "cash", m_BalanceCallback);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnStashBalanceAfter(MRX_ETxStatus status, int balance)
+	{
+		CheckInt(m_iBalanceBefore - balance, 0, "balance unchanged with the stash");
+
+		// The stash as before: items the test put in go again, removed by the stash session's next check.
+		array<IEntity> roots = {};
+		GetStashRoots(roots);
+		foreach (IEntity root : roots)
+		{
+			if (!m_aStashBaseline.Contains(root))
+				SCR_EntityHelper.DeleteEntityAndChildren(root);
+		}
+
+		MRX_StashSession session = MRX_StashSessions.Get().Find(m_iPlayerId);
+		if (session)
+			session.MarkDirty();
+
+		GetGame().GetCallqueue().CallLater(RestoreSlot, STEP_MS);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void RestoreSlot()
+	{
 		m_RestoreCallback = new MRX_StashResultCallback();
 		m_RestoreCallback.GetOnResult().Insert(OnRestored);
 		MRX_PropertyChange change = MRX_PropertyChange.Create(MRX_LoadoutService.GetPropertyKey(m_iSlot), m_sOriginalSlot);
@@ -598,6 +844,56 @@ class MRX_Test_LoadoutFlow : MRX_TestCase
 		}
 
 		return count;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected IEntity FindCarried(ResourceName prefab)
+	{
+		array<IEntity> items = {};
+		MRX_EntitySnapshots.GetLoadoutItems(m_Possession.GetCharacter(), items);
+		foreach (IEntity item : items)
+		{
+			if (SCR_ResourceNameUtils.GetPrefabName(item) == prefab)
+				return item;
+		}
+
+		return null;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Items of the prefab in the open stash, at any depth.
+	protected int CountStashed(ResourceName prefab)
+	{
+		MRX_StashSession session = MRX_StashSessions.Get().Find(m_iPlayerId);
+		if (!session || !session.GetStorage())
+			return 0;
+
+		array<IEntity> items = {};
+		MRX_EntitySnapshots.CollectItems(session.GetStorage(), items);
+		int count;
+		foreach (IEntity item : items)
+		{
+			if (item && !item.IsDeleted() && SCR_ResourceNameUtils.GetPrefabName(item) == prefab)
+				count++;
+		}
+
+		return count;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void GetStashRoots(notnull array<IEntity> outItems)
+	{
+		MRX_StashSession session = MRX_StashSessions.Get().Find(m_iPlayerId);
+		if (!session || !session.GetStorage())
+			return;
+
+		array<InventoryItemComponent> roots = {};
+		session.GetStorage().GetOwnedItems(roots, false);
+		foreach (InventoryItemComponent root : roots)
+		{
+			if (root.GetOwner())
+				outItems.Insert(root.GetOwner());
+		}
 	}
 
 	//------------------------------------------------------------------------------------------------

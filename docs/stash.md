@@ -142,9 +142,10 @@ the pages of an owner's stash. The stash panel shows the pages of the owner from
 
 ### Loadouts
 
-Below the stash panel, a loadout bar (`MRX_LoadoutBar`) lists the player's loadout slots (`MRX_Settings`
-`m_iLoadoutSlots`, default 3), each with its main weapon, number of items and what putting it on costs now, and the
-player's balance under it. Its buttons act only when held (`MRX_HoldButton`):
+A button below the stash panel opens the loadout window (`MRX_LoadoutMenu`, closed with the stash). It lists the
+player's loadout slots, each with its main weapon, number of items and what putting it on costs now, and below them
+the stash check box and, for a few seconds, the result of the last request. Locked slots show greyed out. The buttons
+act only when held (`MRX_HoldButton`):
 
 - **Save** stores what the character wears and carries (clothing, weapon and equipment storages, the ones the vanilla
   arsenal loadout saves) into the slot, as new items: full magazines, no damage. It replaces what the slot held.
@@ -155,12 +156,24 @@ player's balance under it. Its buttons act only when held (`MRX_HoldButton`):
   plans, takes the payment, plans again (if the gear changed meanwhile the payment is refunded: `CHANGED`), puts the
   loadout on and refunds the price of items that could not be put on (`INCOMPLETE`). Everything worn afterwards counts
   as the player's own, issued items it kept included.
+- **Use stash items** (a check box of the bar, on by default): missing items come from the stash before they are bought
+  (the same rules: by prefab, not issued, full magazines; also items not for sale), and the player's other items go
+  into the stash instead of being sold (sold when they do not fit). Each item goes with what it holds, except items the
+  loadout uses. A stashed item the loadout uses is removed from the stash after the loadout is on, and only when the
+  player got it; what it holds besides stays in the stash as items of its own.
+
+Every player has `MRX_Settings` `m_iLoadoutSlots` slots unlocked (default 3), and the window shows
+`m_iMaxLoadoutSlots` (default 10, at most `MRX_LoadoutSlots.MAX_SLOTS`). `MRX_LoadoutSlots` unlocks slots per owner,
+e.g. for a shop product: `AddSlots(ownerId, count, context, cb)` unlocks them up to `GetMaxSlots()` and reports whether
+the limit was reached; `GetSlots(record)` returns the unlocked slots of an owner. The extra slots are a stash property
+(`marx.loadout.extraSlots`); a saved loadout in a slot that is locked again stays until it is unlocked.
 
 Loadouts are kept as stash properties (`marx.loadout.<slot>`) and need the open stash, so they are only used at a stash
-point, never on respawn. Server API: `MRX_Loadouts.Get()` with `Save(playerId, slot, cb)`, `Load(playerId, slot, cb)`
-and `Describe(playerId, cb)` (status `MRX_ELoadoutStatus`). The cost rules are in `MRX_LoadoutMath` (`Marx_Core`,
+point, never on respawn. Server API: `MRX_Loadouts.Get()` with `Save(playerId, slot, cb)`,
+`Load(playerId, slot, cb, useStash)` and `Describe(playerId, cb)` (status `MRX_ELoadoutStatus`; the result counts the
+items taken from and put into the stash). The cost rules are in `MRX_LoadoutMath` (`Marx_Core`,
 no engine dependencies); `MRX_EntitySnapshots.CaptureLoadout` and `ApplyLoadout` capture and put on a character's gear.
-Clients call `SCR_PlayerController.MRX_RequestLoadoutSave(slot)`, `MRX_RequestLoadoutLoad(slot)` and
+Clients call `SCR_PlayerController.MRX_RequestLoadoutSave(slot)`, `MRX_RequestLoadoutLoad(slot, useStash)` and
 `MRX_RequestLoadoutInfo()`, answered through `MRX_GetOnLoadoutResult()` and `MRX_GetOnLoadoutInfo()`; the server also
 sends the slots when the stash opens and when the character's gear changes.
 

@@ -3,54 +3,27 @@
 //! moved inside the stash, or put in from elsewhere (the move is refused when the cells are taken).
 class MRX_StashPanelUI : SCR_InventoryOpenedStorageUI
 {
-	protected ref MRX_LoadoutBar m_LoadoutBar;
-	protected ref MRX_BalancePanel m_BalancePanel;
-	protected MRX_ClientWallet m_Wallet;
+	protected ref MRX_LoadoutButton m_LoadoutButton;
 
 	//------------------------------------------------------------------------------------------------
-	//! Below the items: the loadout slots and the balance (the vicinity panel, which shows it otherwise, is hidden).
+	//! Below the items: the button of the loadout window (the balance shows below the quick slots).
 	override void Init()
 	{
 		super.Init();
 		if (!MRX_StashStorageComponent.Cast(m_Storage) || !m_widget)
 			return;
 
-		m_LoadoutBar = MRX_LoadoutBar.Create(m_widget);
-		m_Wallet = MRX_ClientWallet.GetLocal();
-		if (!m_Wallet || !MRX_BalancePanel.IsShownInInventory())
-			return;
-
-		m_BalancePanel = MRX_BalancePanel.Create(m_widget, null);
-		if (m_BalancePanel)
-			m_Wallet.GetOnBalanceChanged().Insert(OnBalanceChanged);
+		m_LoadoutButton = MRX_LoadoutButton.Create(m_widget);
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! The loadout window closes with the stash.
 	override event void HandlerDeattached(Widget w)
 	{
-		if (m_Wallet)
-			m_Wallet.GetOnBalanceChanged().Remove(OnBalanceChanged);
-
-		if (m_BalancePanel)
-			m_BalancePanel.Stop();
-
-		if (m_LoadoutBar)
-			m_LoadoutBar.Stop();
+		if (m_LoadoutButton)
+			m_LoadoutButton.Stop();
 
 		super.HandlerDeattached(w);
-	}
-
-	//------------------------------------------------------------------------------------------------
-	MRX_LoadoutBar GetLoadoutBar()
-	{
-		return m_LoadoutBar;
-	}
-
-	//------------------------------------------------------------------------------------------------
-	protected void OnBalanceChanged(string currency, int balance)
-	{
-		if (m_BalancePanel)
-			m_BalancePanel.OnBalanceChanged(currency, balance);
 	}
 
 	//------------------------------------------------------------------------------------------------

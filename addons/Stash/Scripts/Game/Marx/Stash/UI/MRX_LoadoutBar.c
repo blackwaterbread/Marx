@@ -1,23 +1,28 @@
-//! Loadout slots below the items of the stash panel, in the look of the balance panel: each slot shows the main weapon
-//! and the number of items of its saved loadout and what putting it on costs now. Save and Load act only when held
-//! (MRX_HoldButton): saving replaces the slot, loading replaces the gear. Client. Internal.
+//! Loadout slots of the loadout window (MRX_LoadoutMenu), in the look of the balance panel: each slot shows the main
+//! weapon and the number of items of its saved loadout and what putting it on costs now. Save and Load act only when
+//! held (MRX_HoldButton): saving replaces the slot, loading replaces the gear. A check box chooses whether loading uses
+//! the stash (MRX_LoadoutService.Load). Client. Internal.
 class MRX_LoadoutBar : Managed
 {
-	//! Vertical layout of a storage panel: header, title, item grid, pages.
-	protected static const string PANEL_CONTAINER = "Container";
 	protected static const ResourceName BOLD_FONT = "{EABA4FE9D014CCEF}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt";
 	protected static const ResourceName REGULAR_FONT = "{3E7733BAC8C831F6}UI/Fonts/RobotoCondensed/RobotoCondensed_Regular.fnt";
 	protected static const int TITLE_FONT_SIZE = 15;
-	protected static const int NAME_FONT_SIZE = 16;
-	protected static const int DETAIL_FONT_SIZE = 13;
-	protected static const int INDEX_FONT_SIZE = 20;
+	protected static const int NAME_FONT_SIZE = 18;
+	protected static const int DETAIL_FONT_SIZE = 14;
+	protected static const int INDEX_FONT_SIZE = 24;
+	protected static const float INDEX_WIDTH = 38;
+	//! Opacity of the rows of locked slots.
+	protected static const float LOCKED_OPACITY = 0.45;
 	protected static const float ACCENT_WIDTH = 4;
-	protected static const float SAVE_WIDTH = 64;
-	protected static const float LOAD_WIDTH = 124;
+	protected static const float SAVE_WIDTH = 80;
+	protected static const float LOAD_WIDTH = 160;
 	protected static const int FEEDBACK_MS = 5000;
 	protected static const int DECOR = WidgetFlags.VISIBLE | WidgetFlags.IGNORE_CURSOR | WidgetFlags.NOFOCUS;
 	//! Containers of buttons: a container that ignores the cursor hides its children from it too.
 	protected static const int CONTAINER = WidgetFlags.VISIBLE;
+
+	//! Loading uses the stash; kept while the game runs.
+	protected static bool s_bUseStash = true;
 
 	//! Weak.
 	protected SCR_PlayerController m_Controller;
@@ -25,30 +30,36 @@ class MRX_LoadoutBar : Managed
 	protected Widget m_wBar;
 	protected Widget m_wRows;
 	protected TextWidget m_wInfo;
+	protected ref array<Widget> m_aSlotRows = {};
+	protected ref array<TextWidget> m_aIndexes = {};
+	protected ref MRX_CheckBox m_StashBox;
 	protected ref array<ref MRX_HoldButton> m_aSaveButtons = {};
 	protected ref array<ref MRX_HoldButton> m_aLoadButtons = {};
 	protected ref array<TextWidget> m_aNames = {};
 	protected ref array<TextWidget> m_aDetails = {};
 	protected string m_sCurrency;
+	//! The slots as last reported, see MRX_LoadoutInfo.
+	protected ref array<string> m_aMainItems = {};
+	protected ref array<int> m_aItemCounts = {};
+	protected ref array<int> m_aNets = {};
+	protected ref array<int> m_aUnavailable = {};
+	protected ref array<int> m_aStashNets = {};
+	protected ref array<int> m_aStashUnavailable = {};
 	//! The last request was a load (else a save).
 	protected bool m_bLastLoad;
 
 	//------------------------------------------------------------------------------------------------
-	//! Adds the bar below the item grid of a storage panel and asks the server for the slots.
-	//! \return Null when the panel has an unexpected layout or there is no local player controller.
-	static MRX_LoadoutBar Create(Widget panelRoot)
+	//! Adds the bar to a layout and asks the server for the slots.
+	//! \return Null when there is no local player controller.
+	static MRX_LoadoutBar Create(notnull Widget parent)
 	{
-		if (!panelRoot)
-			return null;
-
-		Widget container = panelRoot.FindAnyWidget(PANEL_CONTAINER);
 		SCR_PlayerController controller = SCR_PlayerController.Cast(GetGame().GetPlayerController());
-		if (!container || !controller)
+		if (!controller)
 			return null;
 
 		MRX_LoadoutBar bar = new MRX_LoadoutBar();
 		bar.m_Controller = controller;
-		bar.Build(container);
+		bar.Build(parent);
 		controller.MRX_GetOnLoadoutInfo().Insert(bar.OnInfo);
 		controller.MRX_GetOnLoadoutResult().Insert(bar.OnResult);
 		controller.MRX_RequestLoadoutInfo();
@@ -56,7 +67,7 @@ class MRX_LoadoutBar : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Stops listening and the timers; call when the panel closes.
+	//! Stops listening and the timers; call when the window closes.
 	void Stop()
 	{
 		GetGame().GetCallqueue().Remove(FadeOut);
@@ -89,7 +100,6 @@ class MRX_LoadoutBar : Managed
 	{
 		Widget bar = CreateWidget(WidgetType.OverlayWidgetTypeID, Color.FromInt(Color.WHITE), container, CONTAINER);
 		AlignableSlot.SetHorizontalAlign(bar, LayoutHorizontalAlign.Stretch);
-		AlignableSlot.SetPadding(bar, 0, 8, 0, 0);
 		bar.SetVisible(false);
 		m_wBar = bar;
 
@@ -104,23 +114,32 @@ class MRX_LoadoutBar : Managed
 
 		Widget column = CreateWidget(WidgetType.VerticalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), bar, CONTAINER);
 		AlignableSlot.SetHorizontalAlign(column, LayoutHorizontalAlign.Stretch);
-		AlignableSlot.SetPadding(column, 16 + ACCENT_WIDTH, 8, 12, 10);
-
-		Widget header = CreateWidget(WidgetType.HorizontalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), column, DECOR);
-		AlignableSlot.SetHorizontalAlign(header, LayoutHorizontalAlign.Stretch);
-		TextWidget title = CreateText(header, BOLD_FONT, TITLE_FONT_SIZE, MRX_UIStyle.GetAccentColor());
-		title.SetText("#MRX-Loadout_Title");
-		LayoutSlot.SetSizeMode(title, LayoutSizeMode.Fill);
-		TextWidget hint = CreateText(header, REGULAR_FONT, DETAIL_FONT_SIZE, MRX_UIStyle.GetMutedColor());
-		hint.SetText("#MRX-Loadout_HoldHint");
-		LayoutSlot.SetVerticalAlign(hint, LayoutVerticalAlign.Center);
+		AlignableSlot.SetPadding(column, 16 + ACCENT_WIDTH, 12, 12, 14);
 
 		m_wRows = CreateWidget(WidgetType.VerticalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), column, CONTAINER);
 		AlignableSlot.SetHorizontalAlign(m_wRows, LayoutHorizontalAlign.Stretch);
 
-		m_wInfo = CreateText(column, BOLD_FONT, DETAIL_FONT_SIZE, MRX_UIStyle.GetMutedColor());
-		AlignableSlot.SetPadding(m_wInfo, 0, 6, 0, 0);
-		m_wInfo.SetVisible(false);
+		ImageWidget divider = ImageWidget.Cast(CreateWidget(WidgetType.ImageWidgetTypeID, MRX_UIStyle.GetFrameColor(), column, DECOR));
+		AlignableSlot.SetHorizontalAlign(divider, LayoutHorizontalAlign.Stretch);
+		AlignableSlot.SetPadding(divider, 0, 14, 0, 12);
+		// One unit is less than a pixel at lower resolutions.
+		divider.SetSize(1, 2);
+
+		Widget option = CreateWidget(WidgetType.HorizontalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), column, CONTAINER);
+		AlignableSlot.SetHorizontalAlign(option, LayoutHorizontalAlign.Left);
+		m_StashBox = MRX_CheckBox.Create(option, "#MRX-Loadout_UseStash", s_bUseStash);
+		m_StashBox.GetOnChanged().Insert(OnStashBoxChanged);
+		TextWidget optionHint = CreateText(option, REGULAR_FONT, DETAIL_FONT_SIZE, MRX_UIStyle.GetMutedColor());
+		optionHint.SetText("#MRX-Loadout_UseStashHint");
+		LayoutSlot.SetVerticalAlign(optionHint, LayoutVerticalAlign.Center);
+		AlignableSlot.SetPadding(optionHint, 10, 0, 0, 0);
+
+		// Results show here for a while; the line keeps its height, so the window does not move.
+		m_wInfo = CreateText(column, BOLD_FONT, TITLE_FONT_SIZE, MRX_UIStyle.GetMutedColor());
+		AlignableSlot.SetHorizontalAlign(m_wInfo, LayoutHorizontalAlign.Left);
+		AlignableSlot.SetPadding(m_wInfo, 0, 10, 0, 0);
+		m_wInfo.SetText(" ");
+		m_wInfo.SetOpacity(0);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -146,18 +165,28 @@ class MRX_LoadoutBar : Managed
 
 		m_aSaveButtons.Clear();
 		m_aLoadButtons.Clear();
+		m_aSlotRows.Clear();
+		m_aIndexes.Clear();
 		m_aNames.Clear();
 		m_aDetails.Clear();
 		for (int slot = 0; slot < count; slot++)
 		{
 			Widget row = CreateWidget(WidgetType.HorizontalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), m_wRows, CONTAINER);
 			AlignableSlot.SetHorizontalAlign(row, LayoutHorizontalAlign.Stretch);
-			AlignableSlot.SetPadding(row, 0, 6, 0, 0);
+			if (slot > 0)
+				AlignableSlot.SetPadding(row, 0, 10, 0, 0);
 
-			TextWidget index = CreateText(row, BOLD_FONT, INDEX_FONT_SIZE, MRX_UIStyle.GetAccentColor());
+			m_aSlotRows.Insert(row);
+
+			// Wide enough for two digits, so the names line up.
+			SizeLayoutWidget indexSize = SizeLayoutWidget.Cast(CreateWidget(WidgetType.SizeLayoutWidgetTypeID, Color.FromInt(Color.WHITE), row, DECOR));
+			indexSize.EnableWidthOverride(true);
+			indexSize.SetWidthOverride(INDEX_WIDTH);
+			LayoutSlot.SetVerticalAlign(indexSize, LayoutVerticalAlign.Center);
+			TextWidget index = CreateText(indexSize, BOLD_FONT, INDEX_FONT_SIZE, MRX_UIStyle.GetAccentColor());
 			index.SetText((slot + 1).ToString());
-			LayoutSlot.SetVerticalAlign(index, LayoutVerticalAlign.Center);
-			AlignableSlot.SetPadding(index, 0, 0, 10, 0);
+			AlignableSlot.SetVerticalAlign(index, LayoutVerticalAlign.Center);
+			m_aIndexes.Insert(index);
 
 			Widget texts = CreateWidget(WidgetType.VerticalLayoutWidgetTypeID, Color.FromInt(Color.WHITE), row, DECOR);
 			LayoutSlot.SetSizeMode(texts, LayoutSizeMode.Fill);
@@ -180,7 +209,7 @@ class MRX_LoadoutBar : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void OnInfo(MRX_ELoadoutStatus status, string currency, array<string> mainItems, array<int> itemCounts, array<int> nets, array<int> unavailable)
+	protected void OnInfo(MRX_ELoadoutStatus status, string currency, array<string> mainItems, array<int> itemCounts, array<int> nets, array<int> unavailable, array<int> stashNets, array<int> stashUnavailable)
 	{
 		if (!m_wRows)
 			return;
@@ -190,13 +219,46 @@ class MRX_LoadoutBar : Managed
 			return;
 
 		m_sCurrency = currency;
-		int count = mainItems.Count();
-		if (count != m_aSaveButtons.Count())
-			BuildRows(count);
+		m_aMainItems.Copy(mainItems);
+		m_aItemCounts.Copy(itemCounts);
+		m_aNets.Copy(nets);
+		m_aUnavailable.Copy(unavailable);
+		m_aStashNets.Copy(stashNets);
+		m_aStashUnavailable.Copy(stashUnavailable);
+		if (m_aMainItems.Count() != m_aSaveButtons.Count())
+			BuildRows(m_aMainItems.Count());
 
-		for (int slot = 0; slot < count; slot++)
+		UpdateSlots();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Shows the slots as last reported, priced with or without the stash as the check box says. Locked slots are grey
+	//! and their buttons off.
+	protected void UpdateSlots()
+	{
+		for (int slot = 0, count = m_aMainItems.Count(); slot < count; slot++)
 		{
-			bool saved = !mainItems[slot].IsEmpty();
+			bool locked = m_aItemCounts[slot] == MRX_LoadoutInfo.LOCKED;
+			// The whole row, buttons included.
+			if (locked)
+				m_aSlotRows[slot].SetOpacity(LOCKED_OPACITY);
+			else
+				m_aSlotRows[slot].SetOpacity(1);
+
+			m_aSaveButtons[slot].SetEnabled(!locked);
+			if (locked)
+			{
+				m_aIndexes[slot].SetColor(MRX_UIStyle.GetMutedColor());
+				m_aNames[slot].SetText("#MRX-Loadout_Locked");
+				m_aNames[slot].SetColor(MRX_UIStyle.GetMutedColor());
+				m_aDetails[slot].SetText("#MRX-Loadout_LockedHint");
+				m_aLoadButtons[slot].SetLabel("#MRX-Loadout_Load");
+				m_aLoadButtons[slot].SetEnabled(false);
+				continue;
+			}
+
+			m_aIndexes[slot].SetColor(MRX_UIStyle.GetAccentColor());
+			bool saved = !m_aMainItems[slot].IsEmpty();
 			if (!saved)
 			{
 				m_aNames[slot].SetText("#MRX-Loadout_Empty");
@@ -207,16 +269,31 @@ class MRX_LoadoutBar : Managed
 				continue;
 			}
 
-			m_aNames[slot].SetText(MRX_ScriptedDialog.GetItemDisplayName(mainItems[slot]));
+			int net = m_aNets[slot];
+			int unavailable = m_aUnavailable[slot];
+			if (s_bUseStash && slot < m_aStashNets.Count() && slot < m_aStashUnavailable.Count())
+			{
+				net = m_aStashNets[slot];
+				unavailable = m_aStashUnavailable[slot];
+			}
+
+			m_aNames[slot].SetText(MRX_ScriptedDialog.GetItemDisplayName(m_aMainItems[slot]));
 			m_aNames[slot].SetColor(Color.FromInt(Color.WHITE));
-			string detail = WidgetManager.Translate("#MRX-Loadout_Items", itemCounts[slot]);
-			if (unavailable[slot] > 0)
-				detail += WidgetManager.Translate("#MRX-Loadout_NotForSale", unavailable[slot]);
+			string detail = WidgetManager.Translate("#MRX-Loadout_Items", m_aItemCounts[slot]);
+			if (unavailable > 0)
+				detail += WidgetManager.Translate("#MRX-Loadout_NotForSale", unavailable);
 
 			m_aDetails[slot].SetText(detail);
-			m_aLoadButtons[slot].SetLabel(GetLoadLabel(nets[slot]));
+			m_aLoadButtons[slot].SetLabel(GetLoadLabel(net));
 			m_aLoadButtons[slot].SetEnabled(true);
 		}
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnStashBoxChanged(MRX_CheckBox box)
+	{
+		s_bUseStash = box.IsChecked();
+		UpdateSlots();
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -232,31 +309,46 @@ class MRX_LoadoutBar : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void OnHeld(MRX_HoldButton button)
+	//! Asks the server to save the gear into the slot (0-based), as holding its Save button does.
+	void RequestSave(int slot)
 	{
 		if (!m_Controller)
 			return;
 
+		m_bLastLoad = false;
+		m_Controller.MRX_RequestLoadoutSave(slot);
+		ShowInfo(WidgetManager.Translate("#MRX-Loadout_Saving", slot + 1), false);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Asks the server to put on the slot's loadout (0-based), as holding its Load button does.
+	void RequestLoad(int slot)
+	{
+		if (!m_Controller)
+			return;
+
+		m_bLastLoad = true;
+		m_Controller.MRX_RequestLoadoutLoad(slot, s_bUseStash);
+		ShowInfo(WidgetManager.Translate("#MRX-Loadout_PuttingOn", slot + 1), false);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnHeld(MRX_HoldButton button)
+	{
 		int slot = m_aSaveButtons.Find(button);
 		if (slot >= 0)
 		{
-			m_bLastLoad = false;
-			m_Controller.MRX_RequestLoadoutSave(slot);
-			ShowInfo(WidgetManager.Translate("#MRX-Loadout_Saving", slot + 1), false);
+			RequestSave(slot);
 			return;
 		}
 
 		slot = m_aLoadButtons.Find(button);
 		if (slot >= 0)
-		{
-			m_bLastLoad = true;
-			m_Controller.MRX_RequestLoadoutLoad(slot);
-			ShowInfo(WidgetManager.Translate("#MRX-Loadout_PuttingOn", slot + 1), false);
-		}
+			RequestLoad(slot);
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void OnResult(MRX_ELoadoutStatus status, MRX_ETxStatus txStatus, int slot, int net, string currency, int unavailable)
+	protected void OnResult(MRX_ELoadoutStatus status, MRX_ETxStatus txStatus, int slot, int net, string currency, int unavailable, int fromStash, int stored)
 	{
 		string text;
 		bool error = status != MRX_ELoadoutStatus.OK;
@@ -269,8 +361,13 @@ class MRX_LoadoutBar : Managed
 				else
 					text = WidgetManager.Translate("#MRX-Loadout_PutOn", slot + 1, GetChangeText(net, currency));
 
-				if (unavailable > 0)
-					text += " " + WidgetManager.Translate("#MRX-Loadout_LeftOut", unavailable);
+				// Items left out (not for sale) show in the slot's line.
+				if (fromStash > 0 && stored > 0)
+					text += " " + WidgetManager.Translate("#MRX-Loadout_StashUse", fromStash, stored);
+				else if (fromStash > 0)
+					text += " " + WidgetManager.Translate("#MRX-Loadout_StashTaken", fromStash);
+				else if (stored > 0)
+					text += " " + WidgetManager.Translate("#MRX-Loadout_StashStored", stored);
 
 				break;
 			}
@@ -314,6 +411,7 @@ class MRX_LoadoutBar : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! Shows the text for FEEDBACK_MS.
 	protected void ShowInfo(string text, bool error)
 	{
 		if (!m_wInfo)
@@ -327,7 +425,6 @@ class MRX_LoadoutBar : Managed
 
 		AnimateWidget.StopAllAnimations(m_wInfo);
 		m_wInfo.SetOpacity(1);
-		m_wInfo.SetVisible(true);
 		GetGame().GetCallqueue().Remove(FadeOut);
 		GetGame().GetCallqueue().CallLater(FadeOut, FEEDBACK_MS);
 	}
@@ -335,8 +432,8 @@ class MRX_LoadoutBar : Managed
 	//------------------------------------------------------------------------------------------------
 	protected void FadeOut()
 	{
-		if (m_wInfo && m_wInfo.IsVisible())
-			AnimateWidget.Opacity(m_wInfo, 0, 2, true);
+		if (m_wInfo)
+			AnimateWidget.Opacity(m_wInfo, 0, 2);
 	}
 
 	//------------------------------------------------------------------------------------------------

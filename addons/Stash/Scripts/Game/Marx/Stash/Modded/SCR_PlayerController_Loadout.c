@@ -1,8 +1,8 @@
 //! status: MRX_ELoadoutStatus. Parallel arrays by slot, see MRX_LoadoutInfo.
-void MRX_ClientLoadoutInfoDelegate(MRX_ELoadoutStatus status, string currency, array<string> mainItems, array<int> itemCounts, array<int> nets, array<int> unavailable);
+void MRX_ClientLoadoutInfoDelegate(MRX_ELoadoutStatus status, string currency, array<string> mainItems, array<int> itemCounts, array<int> nets, array<int> unavailable, array<int> stashNets, array<int> stashUnavailable);
 typedef func MRX_ClientLoadoutInfoDelegate;
 
-void MRX_ClientLoadoutResultDelegate(MRX_ELoadoutStatus status, MRX_ETxStatus txStatus, int slot, int net, string currency, int unavailable);
+void MRX_ClientLoadoutResultDelegate(MRX_ELoadoutStatus status, MRX_ETxStatus txStatus, int slot, int net, string currency, int unavailable, int fromStash, int stored);
 typedef func MRX_ClientLoadoutResultDelegate;
 
 //! Saved loadouts at an open stash (API v0): the client asks to save or put on a slot, the server answers with the
@@ -41,9 +41,10 @@ modded class SCR_PlayerController
 
 	//------------------------------------------------------------------------------------------------
 	//! Client: puts the loadout of the slot (0-based) on and pays or receives the difference. Needs the open stash.
-	void MRX_RequestLoadoutLoad(int slot)
+	//! \param useStash See MRX_LoadoutService.Load.
+	void MRX_RequestLoadoutLoad(int slot, bool useStash)
 	{
-		Rpc(MRX_RpcAsk_LoadoutLoad, slot);
+		Rpc(MRX_RpcAsk_LoadoutLoad, slot, useStash);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -75,14 +76,14 @@ modded class SCR_PlayerController
 		if (!shown)
 			shown = new MRX_LoadoutInfo();
 
-		Rpc(MRX_RpcDo_LoadoutInfo, status, shown.m_sCurrency, shown.m_aMainItems, shown.m_aItemCounts, shown.m_aNets, shown.m_aUnavailable);
+		Rpc(MRX_RpcDo_LoadoutInfo, status, shown.m_sCurrency, shown.m_aMainItems, shown.m_aItemCounts, shown.m_aNets, shown.m_aUnavailable, shown.m_aStashNets, shown.m_aStashUnavailable);
 	}
 
 	//------------------------------------------------------------------------------------------------
 	//! Server: internal, called by MRX_LoadoutRpcReply.
 	void MRX_DeliverLoadoutResult(notnull MRX_LoadoutResult result)
 	{
-		Rpc(MRX_RpcDo_LoadoutResult, result.m_eStatus, result.m_eTxStatus, result.m_iSlot, result.m_iNet, result.m_sCurrency, result.m_iUnavailableCount);
+		Rpc(MRX_RpcDo_LoadoutResult, result.m_eStatus, result.m_eTxStatus, result.m_iSlot, result.m_iNet, result.m_sCurrency, result.m_iUnavailableCount, result.m_iFromStashCount, result.m_iStoredCount);
 		MRX_LoadoutInfoPush.Schedule(GetPlayerId());
 	}
 
@@ -102,7 +103,7 @@ modded class SCR_PlayerController
 
 	//------------------------------------------------------------------------------------------------
 	[RplRpc(RplChannel.Reliable, RplRcver.Server)]
-	protected void MRX_RpcAsk_LoadoutLoad(int slot)
+	protected void MRX_RpcAsk_LoadoutLoad(int slot, bool useStash)
 	{
 		MRX_LoadoutService loadouts = MRX_Loadouts.Get();
 		if (!loadouts)
@@ -111,7 +112,7 @@ modded class SCR_PlayerController
 			return;
 		}
 
-		loadouts.Load(GetPlayerId(), slot, new MRX_LoadoutRpcReply(this));
+		loadouts.Load(GetPlayerId(), slot, new MRX_LoadoutRpcReply(this), useStash);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -123,18 +124,18 @@ modded class SCR_PlayerController
 
 	//------------------------------------------------------------------------------------------------
 	[RplRpc(RplChannel.Reliable, RplRcver.Owner)]
-	protected void MRX_RpcDo_LoadoutInfo(MRX_ELoadoutStatus status, string currency, array<string> mainItems, array<int> itemCounts, array<int> nets, array<int> unavailable)
+	protected void MRX_RpcDo_LoadoutInfo(MRX_ELoadoutStatus status, string currency, array<string> mainItems, array<int> itemCounts, array<int> nets, array<int> unavailable, array<int> stashNets, array<int> stashUnavailable)
 	{
 		if (m_MRX_OnLoadoutInfo)
-			m_MRX_OnLoadoutInfo.Invoke(status, currency, mainItems, itemCounts, nets, unavailable);
+			m_MRX_OnLoadoutInfo.Invoke(status, currency, mainItems, itemCounts, nets, unavailable, stashNets, stashUnavailable);
 	}
 
 	//------------------------------------------------------------------------------------------------
 	[RplRpc(RplChannel.Reliable, RplRcver.Owner)]
-	protected void MRX_RpcDo_LoadoutResult(MRX_ELoadoutStatus status, MRX_ETxStatus txStatus, int slot, int net, string currency, int unavailable)
+	protected void MRX_RpcDo_LoadoutResult(MRX_ELoadoutStatus status, MRX_ETxStatus txStatus, int slot, int net, string currency, int unavailable, int fromStash, int stored)
 	{
 		if (m_MRX_OnLoadoutResult)
-			m_MRX_OnLoadoutResult.Invoke(status, txStatus, slot, net, currency, unavailable);
+			m_MRX_OnLoadoutResult.Invoke(status, txStatus, slot, net, currency, unavailable, fromStash, stored);
 	}
 }
 

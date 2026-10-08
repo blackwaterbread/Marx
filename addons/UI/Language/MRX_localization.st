@@ -177,6 +177,22 @@ StringTable {
    Author "denev"
    LastChanged "denev"
   }
+  CustomStringTableItem "{6A90A644A9680AFF}" {
+   Id "MRX-Loadout_Locked"
+   Target_en_us "Locked"
+   Target_ko_kr "잠김"
+   Modified 1787864655
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A90A644A968EC93}" {
+   Id "MRX-Loadout_LockedHint"
+   Target_en_us "Unlock more slots to use it"
+   Target_ko_kr "슬롯을 더 열면 사용할 수 있습니다"
+   Modified 1787864655
+   Author "denev"
+   LastChanged "denev"
+  }
   CustomStringTableItem "{6A8E48E5A1091F45}" {
    Id "MRX-Loadout_NoStash"
    Target_en_us "Open your stash first"
@@ -206,6 +222,14 @@ StringTable {
    Target_en_us "nothing to pay"
    Target_ko_kr "지불할 금액 없음"
    Modified 1787709696
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A90A789A7E34FDB}" {
+   Id "MRX-Loadout_Open"
+   Target_en_us "Open Loadouts"
+   Target_ko_kr "로드아웃 열기"
+   Modified 1787864984
    Author "denev"
    LastChanged "denev"
   }
@@ -265,11 +289,51 @@ StringTable {
    Author "denev"
    LastChanged "denev"
   }
+  CustomStringTableItem "{6A909A13D179462A}" {
+   Id "MRX-Loadout_StashStored"
+   Target_en_us "(%1 stored)"
+   Target_ko_kr "(%1개 보관)"
+   Modified 1787861746
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A909A13D1788ADE}" {
+   Id "MRX-Loadout_StashTaken"
+   Target_en_us "(%1 from the stash)"
+   Target_ko_kr "(보관함에서 %1개)"
+   Modified 1787861746
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A9092C7BA304A6C}" {
+   Id "MRX-Loadout_StashUse"
+   Target_en_us "(%1 from the stash, %2 stored)"
+   Target_ko_kr "(보관함에서 %1개, %2개 보관)"
+   Modified 1787859690
+   Author "denev"
+   LastChanged "denev"
+  }
   CustomStringTableItem "{6A8E48E5A2F89980}" {
    Id "MRX-Loadout_Title"
    Target_en_us "LOADOUTS"
    Target_ko_kr "로드아웃"
    Modified 1787709696
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A9092C7BA3351C2}" {
+   Id "MRX-Loadout_UseStash"
+   Target_en_us "Use stash items"
+   Target_ko_kr "보관함 아이템 사용"
+   Modified 1787859690
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A9092C7BA33C301}" {
+   Id "MRX-Loadout_UseStashHint"
+   Target_en_us "Spare gear goes into the stash"
+   Target_ko_kr "남는 장비는 보관함으로"
+   Modified 1787859690
    Author "denev"
    LastChanged "denev"
   }

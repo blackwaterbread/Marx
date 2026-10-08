@@ -5,6 +5,12 @@
 //! - "shop": spawns the sample shop table next to the player, adds a sample product and opens the shop window;
 //! - "stash": spawns a stash wardrobe next to the player and opens the stash;
 //! - "loadout <slot>": saves the player's gear into the slot (0-based) of the open stash, with test prices;
+//! - "loadouts": opens the loadout window of the open stash;
+//! - "addslot": gives the player one more loadout slot (shown from the next opening of the stash);
+//! - "load <slot>": puts the slot's loadout on as the Load button of the loadout window does;
+//! - "tostash": moves the weapon in the player's hands into the open stash;
+//! - "give": spawns a compass into the player's inventory;
+//! - "lang <code>": switches the UI language, e.g. "lang ko_kr";
 //! - "close": closes open menus.
 class MRX_TestUiCommands
 {
@@ -57,6 +63,12 @@ class MRX_TestUiCommands
 			case "shop": OpenShop(character); break;
 			case "stash": OpenStash(controller, character); break;
 			case "loadout": SaveLoadout(controller, words); break;
+			case "loadouts": MRX_LoadoutMenu.Open(); break;
+			case "addslot": AddLoadoutSlot(controller); break;
+			case "load": LoadLoadout(words); break;
+			case "tostash": MoveWeaponToStash(controller, character); break;
+			case "give": GiveCompass(character); break;
+			case "lang": if (words.Count() > 1) WidgetManager.SetLanguage(words[1]); break;
 			case "close": GetGame().GetMenuManager().CloseAllMenus(); break;
 		}
 	}
@@ -118,6 +130,60 @@ class MRX_TestUiCommands
 			slot = words[1].ToInt();
 
 		MRX_Loadouts.Get().Save(controller.GetPlayerId(), slot, new MRX_LoadoutRpcReply(controller));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! As if the Load button of the slot was held in the loadout window (opened with "loadouts").
+	protected static void LoadLoadout(notnull array<string> words)
+	{
+		MRX_LoadoutMenu menu = MRX_LoadoutMenu.GetOpen();
+		if (!menu || !menu.GetBar())
+			return;
+
+		int slot;
+		if (words.Count() > 1)
+			slot = words[1].ToInt();
+
+		menu.GetBar().RequestLoad(slot);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected static void AddLoadoutSlot(SCR_PlayerController controller)
+	{
+		if (!controller)
+			return;
+
+		string ownerId = MRX_Marx.GetOwnerId(controller.GetPlayerId());
+		if (ownerId.IsEmpty())
+			return;
+
+		MRX_TxContext context = MRX_TxContext.Create("test", "loadout slot", "test:" + MRX_Marx.NewId());
+		MRX_LoadoutSlots.AddSlots(ownerId, 1, context, new MRX_LoadoutSlotsCallback());
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Moves the weapon in the player's hands into the open stash.
+	protected static void MoveWeaponToStash(SCR_PlayerController controller, IEntity character)
+	{
+		ChimeraCharacter chimera = ChimeraCharacter.Cast(character);
+		MRX_StashSessionManager sessions = MRX_StashSessions.Get();
+		if (!controller || !chimera || !sessions)
+			return;
+
+		MRX_StashSession session = sessions.Find(controller.GetPlayerId());
+		BaseWeaponManagerComponent weapons = BaseWeaponManagerComponent.Cast(chimera.FindComponent(BaseWeaponManagerComponent));
+		if (!session || !session.GetStorage() || !weapons || !weapons.GetCurrentWeapon())
+			return;
+
+		chimera.GetCharacterController().GetInventoryStorageManager().TryMoveItemToStorage(weapons.GetCurrentWeapon().GetOwner(), session.GetStorage());
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected static void GiveCompass(IEntity character)
+	{
+		ChimeraCharacter chimera = ChimeraCharacter.Cast(character);
+		if (chimera && chimera.GetCharacterController())
+			chimera.GetCharacterController().GetInventoryStorageManager().TrySpawnPrefabToStorage(MRX_LoadoutTests.COMPASS);
 	}
 }
 

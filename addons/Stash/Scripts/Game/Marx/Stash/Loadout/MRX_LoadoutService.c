@@ -33,6 +33,10 @@ class MRX_LoadoutResult : Managed
 	//! Paid (positive) or received (negative) for putting the loadout on.
 	int m_iNet;
 	int m_iUnavailableCount;
+	//! Items of the loadout taken from the stash.
+	int m_iFromStashCount;
+	//! The player's items the loadout did not use that went into the stash.
+	int m_iStoredCount;
 
 	//------------------------------------------------------------------------------------------------
 	static MRX_LoadoutResult Create(MRX_ELoadoutStatus status, int slot)
@@ -55,16 +59,24 @@ class MRX_LoadoutCallback : Managed
 }
 
 //------------------------------------------------------------------------------------------------
-//! The slots of a player as the stash panel shows them (API v0), parallel arrays by slot.
+//! The slots of a player as the loadout window shows them (API v0), parallel arrays by slot: every slot the player can
+//! unlock (MRX_LoadoutSlots.GetMaxSlots), the locked ones marked in m_aItemCounts.
 class MRX_LoadoutInfo : Managed
 {
+	//! Item count of a locked slot.
+	static const int LOCKED = -1;
+
 	string m_sCurrency;
-	//! Main weapon (or first item) of each saved loadout, empty for an empty slot.
+	//! Main weapon (or first item) of each saved loadout, empty for an empty or locked slot.
 	ref array<string> m_aMainItems = {};
+	//! Items of each saved loadout, 0 for an empty slot, LOCKED for a locked one.
 	ref array<int> m_aItemCounts = {};
 	//! What putting it on costs now (negative: the player receives money).
 	ref array<int> m_aNets = {};
 	ref array<int> m_aUnavailable = {};
+	//! The same when it uses the stash (see MRX_LoadoutService.Load).
+	ref array<int> m_aStashNets = {};
+	ref array<int> m_aStashUnavailable = {};
 }
 
 //------------------------------------------------------------------------------------------------
@@ -90,8 +102,9 @@ class MRX_SavedLoadout : Managed
 //------------------------------------------------------------------------------------------------
 //! Saved loadouts (API v0): at an open stash, a player saves what they wear and carry into a slot and later puts it on
 //! again, using the items they have, buying the missing ones and selling the rest (MRX_LoadoutMath with
-//! MRX_Marx.GetPriceList()). Issued items (MRX_IssuedItems) neither count nor sell. Loadouts are kept as stash
-//! properties; the number of slots is MRX_Settings.m_iLoadoutSlots. Server; use MRX_Loadouts.Get().
+//! MRX_Marx.GetPriceList()). Using the stash, missing items come from the stash before they are bought and the rest
+//! goes into the stash (sold when it does not fit). Issued items (MRX_IssuedItems) neither count nor sell. Loadouts are
+//! kept as stash properties; the slots of an owner are MRX_LoadoutSlots. Server; use MRX_Loadouts.Get().
 class MRX_LoadoutService : Managed
 {
 	static const string PROPERTY_PREFIX = "marx.loadout.";
@@ -101,13 +114,10 @@ class MRX_LoadoutService : Managed
 	protected ref array<ref MRX_LoadoutOp> m_aOps = {};
 
 	//------------------------------------------------------------------------------------------------
+	//! \return Slots every owner has (MRX_LoadoutSlots.GetBaseSlots); owners may have more.
 	int GetSlotCount()
 	{
-		MRX_MarxSystem system = MRX_MarxSystem.GetInstance();
-		if (!system || !system.GetSettings())
-			return 0;
-
-		return Math.Max(0, system.GetSettings().m_iLoadoutSlots);
+		return MRX_LoadoutSlots.GetBaseSlots();
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -119,9 +129,11 @@ class MRX_LoadoutService : Managed
 
 	//------------------------------------------------------------------------------------------------
 	//! Puts the loadout of the slot (0-based) on the player's character and settles the price.
-	void Load(int playerId, int slot, MRX_LoadoutCallback callback = null)
+	//! \param useStash Takes missing items from the open stash before buying them, and puts the player's unused items
+	//! into it instead of selling them.
+	void Load(int playerId, int slot, MRX_LoadoutCallback callback = null, bool useStash = false)
 	{
-		StartOp(new MRX_LoadoutLoadOp(this, playerId, slot, callback));
+		StartOp(new MRX_LoadoutLoadOp(this, playerId, slot, callback, useStash));
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -180,22 +192,94 @@ class MRX_LoadoutService : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Prefabs of the character's items that count as the player's own for putting on a loadout: not issued, and
-	//! magazines only when full.
+	//! Whether the item counts as the player's own for putting on a loadout: not issued, and a magazine only when full.
+	static bool IsOwnItem(notnull IEntity item)
+	{
+		if (MRX_IssuedItems.IsIssued(item))
+			return false;
+
+		BaseMagazineComponent magazine = BaseMagazineComponent.Cast(item.FindComponent(BaseMagazineComponent));
+		return !magazine || magazine.GetAmmoCount() >= magazine.GetMaxAmmoCount();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Prefabs of the character's items that count as the player's own (IsOwnItem).
 	static void GetOwnedPrefabs(notnull IEntity character, notnull array<ResourceName> outPrefabs)
 	{
 		array<IEntity> items = {};
 		MRX_EntitySnapshots.GetLoadoutItems(character, items);
 		foreach (IEntity item : items)
 		{
-			if (MRX_IssuedItems.IsIssued(item))
-				continue;
+			if (IsOwnItem(item))
+				outPrefabs.Insert(SCR_ResourceNameUtils.GetPrefabName(item));
+		}
+	}
 
-			BaseMagazineComponent magazine = BaseMagazineComponent.Cast(item.FindComponent(BaseMagazineComponent));
-			if (magazine && magazine.GetAmmoCount() < magazine.GetMaxAmmoCount())
-				continue;
+	//------------------------------------------------------------------------------------------------
+	//! The player's open stash once it shows the stashed items, or null.
+	static MRX_StashSession FindOpenStash(int playerId)
+	{
+		MRX_StashSessionManager sessions = MRX_StashSessions.Get();
+		if (!sessions)
+			return null;
 
-			outPrefabs.Insert(SCR_ResourceNameUtils.GetPrefabName(item));
+		MRX_StashSession session = sessions.Find(playerId);
+		if (!session || !session.IsReady() || session.IsClosing() || !session.GetStorage())
+			return null;
+
+		return session;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Items in the open stash at any depth, each before its contents.
+	static void GetStashItems(notnull MRX_StashSession stash, notnull array<IEntity> outItems)
+	{
+		MRX_EntitySnapshots.CollectItems(stash.GetStorage(), outItems);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Prefabs of the stashed items that count as the player's own (IsOwnItem).
+	static void GetStashPrefabs(notnull MRX_StashSession stash, notnull array<ResourceName> outPrefabs)
+	{
+		array<IEntity> items = {};
+		GetStashItems(stash, items);
+		foreach (IEntity item : items)
+		{
+			if (IsOwnItem(item))
+				outPrefabs.Insert(SCR_ResourceNameUtils.GetPrefabName(item));
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Everything the item holds, at any depth, each before its contents.
+	static void GetContents(notnull IEntity item, notnull array<IEntity> outItems)
+	{
+		set<BaseInventoryStorageComponent> storages = new set<BaseInventoryStorageComponent>();
+		MRX_EntitySnapshots.FindStorages(item, storages);
+		foreach (BaseInventoryStorageComponent storage : storages)
+		{
+			MRX_EntitySnapshots.CollectItems(storage, outItems);
+		}
+
+		outItems.RemoveItem(item);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Items directly in the item's storages.
+	static void GetDirectContents(notnull IEntity item, notnull array<IEntity> outItems)
+	{
+		set<BaseInventoryStorageComponent> storages = new set<BaseInventoryStorageComponent>();
+		MRX_EntitySnapshots.FindStorages(item, storages);
+		foreach (BaseInventoryStorageComponent storage : storages)
+		{
+			array<InventoryItemComponent> contents = {};
+			storage.GetOwnedItems(contents, false);
+			foreach (InventoryItemComponent content : contents)
+			{
+				IEntity owner = content.GetOwner();
+				if (owner && owner != item && !outItems.Contains(owner))
+					outItems.Insert(owner);
+			}
 		}
 	}
 
@@ -233,7 +317,8 @@ class MRX_LoadoutService : Managed
 	//! Internal: OK when the player can use loadouts at an open stash now.
 	MRX_ELoadoutStatus CheckPlayer(int playerId, int slot, bool needPrices)
 	{
-		if (slot < 0 || slot >= GetSlotCount())
+		// The owner's own slots are checked once the stash is listed (MRX_LoadoutOp.HasSlot).
+		if (slot < 0 || slot >= MRX_LoadoutSlots.MAX_SLOTS || GetSlotCount() == 0)
 			return MRX_ELoadoutStatus.UNKNOWN_SLOT;
 
 		if (needPrices && !MRX_Marx.GetPriceList())
@@ -392,6 +477,13 @@ class MRX_LoadoutOp : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! \return True when the slot is one of the owner's (MRX_LoadoutSlots).
+	protected bool HasSlot(notnull MRX_StashRecord record)
+	{
+		return m_iSlot < MRX_LoadoutSlots.GetSlots(record);
+	}
+
+	//------------------------------------------------------------------------------------------------
 	protected MRX_TxContext CreateContext(string action)
 	{
 		string reason = string.Format("loadout:%1:%2", action, m_iSlot + 1);
@@ -419,6 +511,32 @@ class MRX_LoadoutSaveOp : MRX_LoadoutOp
 		}
 
 		m_sOwnerId = MRX_Marx.GetOwnerId(m_iPlayerId);
+		ListStash();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void OnListed(MRX_EStashStatus status, MRX_StashRecord record)
+	{
+		if (status != MRX_EStashStatus.OK || !record)
+		{
+			Finish(MRX_ELoadoutStatus.STORAGE_ERROR);
+			return;
+		}
+
+		if (!HasSlot(record))
+		{
+			Finish(MRX_ELoadoutStatus.UNKNOWN_SLOT);
+			return;
+		}
+
+		// The listing took at least a frame.
+		MRX_ELoadoutStatus playerStatus = m_Service.CheckPlayer(m_iPlayerId, m_iSlot, false);
+		if (playerStatus != MRX_ELoadoutStatus.OK)
+		{
+			Finish(playerStatus);
+			return;
+		}
+
 		ChimeraCharacter character = MRX_LoadoutService.GetCharacter(m_iPlayerId);
 		MRX_SavedLoadout saved = new MRX_SavedLoadout();
 		saved.m_Loadout = MRX_EntitySnapshots.CaptureLoadout(character);
@@ -446,17 +564,20 @@ class MRX_LoadoutSaveOp : MRX_LoadoutOp
 
 //------------------------------------------------------------------------------------------------
 //! Plan -> payment -> plan again (the gear must not have changed) -> put on -> refund of what could not be put on, or
-//! payout of the sale.
+//! payout of the sale. Using the stash, the unused items go into the stash before the loadout is put on, and the stashed
+//! items it used are removed from the stash after.
 class MRX_LoadoutLoadOp : MRX_LoadoutOp
 {
 	protected ref MRX_SavedLoadout m_Saved;
 	protected ref MRX_LoadoutPlan m_Plan;
 	protected int m_iCharged;
+	protected bool m_bUseStash;
 
 	//------------------------------------------------------------------------------------------------
-	void MRX_LoadoutLoadOp(MRX_LoadoutService service, int playerId, int slot, MRX_LoadoutCallback callback)
+	void MRX_LoadoutLoadOp(MRX_LoadoutService service, int playerId, int slot, MRX_LoadoutCallback callback, bool useStash)
 	{
 		Init(service, playerId, slot, callback);
+		m_bUseStash = useStash;
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -479,6 +600,12 @@ class MRX_LoadoutLoadOp : MRX_LoadoutOp
 		if (status != MRX_EStashStatus.OK || !record)
 		{
 			Finish(MRX_ELoadoutStatus.STORAGE_ERROR);
+			return;
+		}
+
+		if (!HasSlot(record))
+		{
+			Finish(MRX_ELoadoutStatus.UNKNOWN_SLOT);
 			return;
 		}
 
@@ -519,7 +646,15 @@ class MRX_LoadoutLoadOp : MRX_LoadoutOp
 
 		array<ResourceName> ownItems = {};
 		MRX_LoadoutService.GetOwnedPrefabs(MRX_LoadoutService.GetCharacter(m_iPlayerId), ownItems);
-		return MRX_LoadoutMath.Plan(m_Saved.m_Loadout, ownItems, MRX_Marx.GetPriceList());
+		array<ResourceName> stashItems;
+		MRX_StashSession stash = MRX_LoadoutService.FindOpenStash(m_iPlayerId);
+		if (m_bUseStash && stash)
+		{
+			stashItems = {};
+			MRX_LoadoutService.GetStashPrefabs(stash, stashItems);
+		}
+
+		return MRX_LoadoutMath.Plan(m_Saved.m_Loadout, ownItems, MRX_Marx.GetPriceList(), stashItems);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -555,6 +690,15 @@ class MRX_LoadoutLoadOp : MRX_LoadoutOp
 		}
 
 		InventoryStorageManagerComponent manager = character.GetCharacterController().GetInventoryStorageManager();
+		MRX_StashSession stash;
+		if (m_bUseStash)
+			stash = MRX_LoadoutService.FindOpenStash(m_iPlayerId);
+
+		// Paid for the items that should have gone into the stash but were removed instead.
+		int sold;
+		if (stash)
+			sold = StoreLeftovers(character, manager, stash);
+
 		if (!MRX_EntitySnapshots.ApplyLoadout(character, m_Plan.m_Loadout, manager))
 			Print(string.Format("[MRX] Loadout %1 of player %2 was put on incompletely", m_iSlot + 1, m_iPlayerId), LogLevel.WARNING);
 
@@ -571,16 +715,223 @@ class MRX_LoadoutLoadOp : MRX_LoadoutOp
 
 		map<string, int> needed = new map<string, int>();
 		MRX_LoadoutMath.CountItems(m_Plan.m_Loadout, needed);
+		if (stash)
+			sold = MRX_LoadoutMath.AddCapped(sold, TakeFromStash(received, needed, manager, stash));
+
 		int shortfall = m_Plan.GetShortfallPrice(received, needed);
 
-		// Owed: the price of what was not received, and the sale when it was worth more than the purchase.
+		// Owed: the price of what was not received, the sale when it was worth more than the purchase, and the items
+		// removed instead of stored.
 		int owed = MRX_LoadoutMath.AddCapped(shortfall, Math.Max(0, -m_Plan.GetNet()));
-		m_Result.m_iNet = m_Plan.GetNet() - shortfall;
+		owed = MRX_LoadoutMath.AddCapped(owed, sold);
+		m_Result.m_iNet = m_Plan.GetNet() - shortfall - sold;
 		MRX_ELoadoutStatus status = MRX_ELoadoutStatus.OK;
 		if (shortfall > 0)
 			status = MRX_ELoadoutStatus.INCOMPLETE;
 
 		Settle(owed, status);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Moves the player's items the loadout does not use (MRX_LoadoutPlan.m_mLeftover) into the stash, each with what it
+	//! holds except the items the loadout uses: those are removed first, the loadout puts them on again. An item that does
+	//! not fit stays and the loadout removes it, as sold.
+	//! \return Sell value of the unused items removed instead of stored.
+	protected int StoreLeftovers(notnull IEntity character, notnull InventoryStorageManagerComponent manager, notnull MRX_StashSession stash)
+	{
+		map<string, int> left = new map<string, int>();
+		left.Copy(m_Plan.m_mLeftover);
+		MRX_PriceList prices = MRX_Marx.GetPriceList();
+		array<IEntity> items = {};
+		MRX_EntitySnapshots.GetLoadoutItems(character, items);
+		// Items dealt with together with an item that holds them.
+		set<IEntity> handled = new set<IEntity>();
+		int sold;
+		foreach (IEntity item : items)
+		{
+			if (!item || handled.Contains(item) || !MRX_LoadoutService.IsOwnItem(item) || !TakeOne(left, item))
+				continue;
+
+			int count = 1;
+			int value = GetSellPrice(prices, item);
+			array<IEntity> contents = {};
+			MRX_LoadoutService.GetContents(item, contents);
+			foreach (IEntity content : contents)
+			{
+				if (!content || handled.Contains(content))
+					continue;
+
+				handled.Insert(content);
+				// Not counted (issued, magazines not full): stays in the item, as when moved by hand.
+				if (!MRX_LoadoutService.IsOwnItem(content))
+					continue;
+
+				if (TakeOne(left, content))
+				{
+					count++;
+					value = MRX_LoadoutMath.AddCapped(value, GetSellPrice(prices, content));
+					continue;
+				}
+
+				// Used by the loadout. Unused items in it are removed with it, as sold.
+				array<IEntity> inner = {};
+				MRX_LoadoutService.GetContents(content, inner);
+				foreach (IEntity innerItem : inner)
+				{
+					handled.Insert(innerItem);
+					if (innerItem && MRX_LoadoutService.IsOwnItem(innerItem) && TakeOne(left, innerItem))
+						sold = MRX_LoadoutMath.AddCapped(sold, GetSellPrice(prices, innerItem));
+				}
+
+				MRX_EntitySnapshots.DeleteItem(content, manager);
+			}
+
+			if (manager.TryMoveItemToStorage(item, stash.GetStorage()))
+				m_Result.m_iStoredCount += count;
+			else
+				sold = MRX_LoadoutMath.AddCapped(sold, value);
+		}
+
+		stash.MarkDirty();
+		return sold;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Removes the stashed items the loadout used (MRX_LoadoutPlan.GetStashTake), deepest first. What they hold besides
+	//! other taken items stays in the stash as items of their own; what cannot be taken out is removed with them, as sold.
+	//! \return Sell value of the items removed that way.
+	protected int TakeFromStash(notnull map<string, int> received, notnull map<string, int> needed, notnull InventoryStorageManagerComponent manager, notnull MRX_StashSession stash)
+	{
+		map<string, int> toTake = new map<string, int>();
+		foreach (string key, int planned : m_Plan.m_mFromStash)
+		{
+			if (planned > 0)
+				toTake.Set(key, m_Plan.GetStashTake(key, received, needed));
+		}
+
+		array<IEntity> stashed = {};
+		MRX_LoadoutService.GetStashItems(stash, stashed);
+		array<IEntity> candidates = {};
+		array<int> depths = {};
+		int maxDepth;
+		foreach (IEntity item : stashed)
+		{
+			if (!item || !MRX_LoadoutService.IsOwnItem(item) || toTake.Get(GetKey(item)) <= 0)
+				continue;
+
+			int depth = GetDepth(item, stash.GetContainer());
+			candidates.Insert(item);
+			depths.Insert(depth);
+			maxDepth = Math.Max(maxDepth, depth);
+		}
+
+		// Deepest first: taken items inside a taken item go before it.
+		array<IEntity> taken = {};
+		for (int level = maxDepth; level >= 0; level--)
+		{
+			foreach (int i, IEntity candidate : candidates)
+			{
+				if (depths[i] == level && TakeOne(toTake, candidate))
+					taken.Insert(candidate);
+			}
+		}
+
+		MRX_StashStorageComponent storage = stash.GetStorage();
+		MRX_PriceList prices = MRX_Marx.GetPriceList();
+		int sold;
+		// What comes out of a taken item was stashed already: it may go behind the page limit.
+		storage.SetRestoring(true);
+		foreach (IEntity takenItem : taken)
+		{
+			if (!takenItem)
+				continue;
+
+			array<IEntity> contents = {};
+			MRX_LoadoutService.GetDirectContents(takenItem, contents);
+			foreach (IEntity content : contents)
+			{
+				if (taken.Contains(content) || manager.TryMoveItemToStorage(content, storage))
+					continue;
+
+				sold = MRX_LoadoutMath.AddCapped(sold, GetSellValue(prices, content));
+			}
+
+			MRX_EntitySnapshots.DeleteItem(takenItem, manager);
+			m_Result.m_iFromStashCount++;
+		}
+
+		storage.SetRestoring(false);
+		stash.MarkDirty();
+		foreach (string missingKey, int missing : toTake)
+		{
+			if (missing > 0)
+				Print(string.Format("[MRX] Loadout %1 of player %2: %3 of %4 not found in the stash", m_iSlot + 1, m_iPlayerId, missing, missingKey), LogLevel.WARNING);
+		}
+
+		return sold;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Counts one item of the item's prefab off the counts.
+	//! \return False when none was left.
+	protected static bool TakeOne(notnull map<string, int> counts, notnull IEntity item)
+	{
+		string key = GetKey(item);
+		int count = counts.Get(key);
+		if (count <= 0)
+			return false;
+
+		counts.Set(key, count - 1);
+		return true;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected static string GetKey(notnull IEntity item)
+	{
+		return MRX_LoadoutMath.GetPrefabKey(SCR_ResourceNameUtils.GetPrefabName(item));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Levels of items above the item, up to the container.
+	protected static int GetDepth(notnull IEntity item, IEntity container)
+	{
+		int depth;
+		IEntity parent = item.GetParent();
+		while (parent && parent != container)
+		{
+			depth++;
+			parent = parent.GetParent();
+		}
+
+		return depth;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected static int GetSellPrice(MRX_PriceList prices, notnull IEntity item)
+	{
+		if (!prices)
+			return 0;
+
+		return Math.Max(0, prices.GetSellPrice(SCR_ResourceNameUtils.GetPrefabName(item)));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Sell value of the item and what it holds, counting the player's own items only.
+	protected static int GetSellValue(MRX_PriceList prices, notnull IEntity item)
+	{
+		int value;
+		if (MRX_LoadoutService.IsOwnItem(item))
+			value = GetSellPrice(prices, item);
+
+		array<IEntity> contents = {};
+		MRX_LoadoutService.GetContents(item, contents);
+		foreach (IEntity content : contents)
+		{
+			if (content && MRX_LoadoutService.IsOwnItem(content))
+				value = MRX_LoadoutMath.AddCapped(value, GetSellPrice(prices, content));
+		}
+
+		return value;
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -659,18 +1010,37 @@ class MRX_LoadoutDescribeOp : MRX_LoadoutOp
 		if (character)
 			MRX_LoadoutService.GetOwnedPrefabs(character, ownItems);
 
+		// Without an open stash, using it changes nothing.
+		array<ResourceName> stashItems;
+		MRX_StashSession stash = MRX_LoadoutService.FindOpenStash(m_iPlayerId);
+		if (stash && character && stash.GetCharacter() == character)
+		{
+			stashItems = {};
+			MRX_LoadoutService.GetStashPrefabs(stash, stashItems);
+		}
+
 		if (prices)
 			info.m_sCurrency = prices.GetCurrency();
 
-		for (int slot = 0, count = m_Service.GetSlotCount(); slot < count; slot++)
+		int unlocked = MRX_LoadoutSlots.GetSlots(record);
+		for (int slot = 0, count = MRX_LoadoutSlots.GetMaxSlots(); slot < count; slot++)
 		{
-			MRX_SavedLoadout saved = MRX_LoadoutService.Parse(record.GetProperty(MRX_LoadoutService.GetPropertyKey(slot)));
+			MRX_SavedLoadout saved;
+			if (slot < unlocked)
+				saved = MRX_LoadoutService.Parse(record.GetProperty(MRX_LoadoutService.GetPropertyKey(slot)));
+
 			if (!saved)
 			{
 				info.m_aMainItems.Insert(string.Empty);
-				info.m_aItemCounts.Insert(0);
+				if (slot < unlocked)
+					info.m_aItemCounts.Insert(0);
+				else
+					info.m_aItemCounts.Insert(MRX_LoadoutInfo.LOCKED);
+
 				info.m_aNets.Insert(0);
 				info.m_aUnavailable.Insert(0);
+				info.m_aStashNets.Insert(0);
+				info.m_aStashUnavailable.Insert(0);
 				continue;
 			}
 
@@ -680,12 +1050,19 @@ class MRX_LoadoutDescribeOp : MRX_LoadoutOp
 			{
 				info.m_aNets.Insert(0);
 				info.m_aUnavailable.Insert(0);
+				info.m_aStashNets.Insert(0);
+				info.m_aStashUnavailable.Insert(0);
 				continue;
 			}
 
 			MRX_LoadoutPlan plan = MRX_LoadoutMath.Plan(saved.m_Loadout, ownItems, prices);
 			info.m_aNets.Insert(plan.GetNet());
 			info.m_aUnavailable.Insert(plan.m_iUnavailableCount);
+			if (stashItems)
+				plan = MRX_LoadoutMath.Plan(saved.m_Loadout, ownItems, prices, stashItems);
+
+			info.m_aStashNets.Insert(plan.GetNet());
+			info.m_aStashUnavailable.Insert(plan.m_iUnavailableCount);
 		}
 
 		Answer(MRX_ELoadoutStatus.OK, info);

@@ -40,7 +40,10 @@ and a few small items into your stash; reopen an open stash to see them.
 For looking at the windows without typing in the game (e.g. from automation), the server reads one command from
 `$profile:mrx_ui_cmd.txt` every half second in Workbench Play (`MRX_TestUiCommands`): `shop` opens the sample shop
 with a sample product, `stash` opens a stash next to the player, `loadout <slot>` saves the player's gear into a slot of
-the open stash (with test prices), `close` closes the menus.
+the open stash (with test prices), `loadouts` opens the loadout window, `load <slot>` puts a slot on as its Load button
+does, `addslot` gives the player one more loadout slot, `tostash` moves the weapon in the player's hands into the open
+stash, `give` spawns a compass into the player's inventory, `lang <code>` switches the UI language (e.g. `lang ko_kr`),
+`close` closes the menus.
 
 ## Workbench plugins (Plugins > Marx)
 

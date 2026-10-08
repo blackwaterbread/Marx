@@ -22,8 +22,11 @@ class MRX_Settings
 	[Attribute("100", desc: "Assets (stashed and deployed) per stash. 0 = no limit.")]
 	int m_iMaxStashAssets;
 
-	[Attribute("3", desc: "Loadouts a player can save at a stash point (Marx_Stash). 0 = off.", params: "0 10")]
+	[Attribute("3", desc: "Loadout slots every player has unlocked at a stash point (Marx_Stash). 0 = off.", params: "0 10")]
 	int m_iLoadoutSlots;
+
+	[Attribute("10", desc: "Loadout slots the loadout window shows; the ones beyond a player's unlocked slots are locked until added (MRX_LoadoutSlots.AddSlots). Less than the unlocked slots = only those.", params: "0 10")]
+	int m_iMaxLoadoutSlots;
 
 	[Attribute(desc: "What happens to deployed assets on death and after a restart. Empty = keep on death, restore after a restart.")]
 	ref MRX_LossPolicy m_LossPolicy;
@@ -41,6 +44,7 @@ class MRX_Settings
 		settings.m_iMaxRecentKeys = 200;
 		settings.m_iMaxStashAssets = 100;
 		settings.m_iLoadoutSlots = 3;
+		settings.m_iMaxLoadoutSlots = 10;
 		return settings;
 	}
 

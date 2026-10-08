@@ -155,13 +155,14 @@ ms per item, spread over frames; run it in Workbench or a test, not on a live se
   responsive; the category filters wrap after seven per row. Mouse only.
 - Built on `MRX_ScriptedDialog` (`Marx_UI`) from vanilla parts in script (the wide configurable dialog, the dialog
   scroll area, inventory item slots) and Marx widgets, so no Marx layout asset is needed.
-- `MRX_UIStyle`, `MRX_FlatButton` and `MRX_HoldButton` (`Marx_UI`): the colours and helpers of the Marx look, a button
-  in that look, and a button that only acts when held (a bar fills while the mouse button is down), for actions that
-  are costly to trigger by mistake.
-- `MRX_BalancePanel` (`Marx_UI`): the player's balances in large letters below the items of the inventory's vicinity
-  panel (every currency of the wallet) and of a Marx arsenal (its currencies). A change counts to the new value and
-  briefly shows the difference ("+$6,000"). Mods with their own balance display call
-  `MRX_BalancePanel.SetShownInInventory(false)` on every machine and use `MRX_ClientWallet` instead.
+- `MRX_UIStyle`, `MRX_FlatButton`, `MRX_HoldButton` and `MRX_CheckBox` (`Marx_UI`): the colours and helpers of the
+  Marx look, a button in that look, a button that only acts when held (a bar fills while the mouse button is down), for
+  actions that are costly to trigger by mistake, and a check box.
+- `MRX_BalancePanel` (`Marx_UI`): the player's balances in large letters below the quick slots of the inventory
+  (every currency of the wallet; `SCR_InventoryMenuUI.MRX_GetBalancePanel()`). A Marx arsenal shows the outcome of its
+  trades there. A change counts to the new value and briefly shows the difference ("+$6,000"). Mods with their own
+  balance display call `MRX_BalancePanel.SetShownInInventory(false)` on every machine and use `MRX_ClientWallet`
+  instead; a Marx arsenal then shows its own balance panel (its currencies) below its items.
 - `MRX_TextFormat` (`Marx_UI`): amounts with thousands separators (`Amount(12500)` = "12,500", `Money(12500, "cash")` =
   "12,500 cash"), as the shop window and the balance panel show them. Mods can use it in their own UI.
   `MRX_TextFormat.SetCurrencyFormat("cash", "$%1")` changes how a currency is shown ("$12,500") on the machine that

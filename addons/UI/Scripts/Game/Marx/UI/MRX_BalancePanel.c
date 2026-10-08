@@ -1,7 +1,7 @@
-//! Balance panel below the items of an inventory panel (API v0): a dark box with a thin frame and an accent stripe, a
-//! small coloured "BALANCE" title and the balances in large bold letters. A change counts to the new value and lights up
-//! next to it ("-$20", "+$510"); ShowInfo adds a line below, e.g. for failures. The inventory's vicinity panel shows one
-//! with every currency of the local wallet (see SetShownInInventory), Marx arsenals one with their currencies. Client.
+//! Balance panel (API v0): a dark box with a thin frame and an accent stripe, a small coloured "BALANCE" title and the
+//! balances in large bold letters. A change counts to the new value and lights up next to it ("-$20", "+$510");
+//! ShowInfo adds a line below, e.g. for failures. The inventory shows one below the quick slots with every currency of
+//! the local wallet (SCR_InventoryMenuUI.MRX_GetBalancePanel, see SetShownInInventory). Client.
 class MRX_BalancePanel : Managed
 {
 	//! Vertical layout of a storage panel: header, title, item grid, pages.
@@ -23,6 +23,7 @@ class MRX_BalancePanel : Managed
 	protected ref array<string> m_aCurrencies = {};
 	//! Shows every currency of the local wallet, adding new ones as their balances arrive.
 	protected bool m_bAllCurrencies;
+	protected Widget m_wRoot;
 	protected TextWidget m_wAmount;
 	protected TextWidget m_wChange;
 	protected TextWidget m_wInfo;
@@ -34,8 +35,8 @@ class MRX_BalancePanel : Managed
 	protected int m_iCountStep = -1;
 
 	//------------------------------------------------------------------------------------------------
-	//! Whether the inventory's vicinity panel shows the local balances. Mods with their own balance display turn it off
-	//! (on every machine).
+	//! Whether the inventory shows the local balances. Mods with their own balance display turn it off (on every
+	//! machine).
 	static void SetShownInInventory(bool shown)
 	{
 		s_bHiddenInInventory = !shown;
@@ -61,16 +62,32 @@ class MRX_BalancePanel : Managed
 		if (!container)
 			return null;
 
+		return CreateIn(container, currencies);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Adds the panel as the last child of a layout. The caller passes the balance changes of the local wallet to
+	//! OnBalanceChanged and calls Remove (or Stop, when the parent goes) at the end.
+	//! \param currencies Shown currencies in this order; null for every currency of the local wallet.
+	static MRX_BalancePanel CreateIn(notnull Widget parent, array<string> currencies)
+	{
 		MRX_BalancePanel panel = new MRX_BalancePanel();
 		if (currencies)
 			panel.m_aCurrencies.Copy(currencies);
 		else
 			panel.m_bAllCurrencies = true;
 
-		panel.Build(container);
+		panel.Build(parent);
 		panel.ReadBalances();
 		panel.UpdateAmount();
 		return panel;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! The panel's outermost widget, e.g. to change its padding in the parent.
+	Widget GetRootWidget()
+	{
+		return m_wRoot;
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -130,11 +147,21 @@ class MRX_BalancePanel : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! Stops the timers and removes the widgets.
+	void Remove()
+	{
+		Stop();
+		if (m_wRoot)
+			m_wRoot.RemoveFromHierarchy();
+	}
+
+	//------------------------------------------------------------------------------------------------
 	protected void Build(notnull Widget container)
 	{
 		Widget bar = CreateWidget(WidgetType.OverlayWidgetTypeID, Color.FromInt(Color.WHITE), container);
 		AlignableSlot.SetHorizontalAlign(bar, LayoutHorizontalAlign.Stretch);
 		AlignableSlot.SetPadding(bar, 0, 8, 0, 0);
+		m_wRoot = bar;
 
 		Stretch(CreateWidget(WidgetType.ImageWidgetTypeID, GetFrameColor(), bar));
 		Widget fill = CreateWidget(WidgetType.ImageWidgetTypeID, GetFillColor(), bar);

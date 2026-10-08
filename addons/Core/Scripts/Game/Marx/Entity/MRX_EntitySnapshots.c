@@ -157,7 +157,7 @@ class MRX_EntitySnapshots
 	//------------------------------------------------------------------------------------------------
 	//! Removes an item through the inventory, or deletes it directly when the inventory refuses: e.g. the weapon of a
 	//! character that is being prepared for a spawn, before the player takes control.
-	protected static void DeleteItem(notnull IEntity item, notnull InventoryStorageManagerComponent manager)
+	static void DeleteItem(notnull IEntity item, notnull InventoryStorageManagerComponent manager)
 	{
 		if (!manager.TryDeleteItem(item))
 			RplComponent.DeleteRplEntity(item, false);
@@ -240,8 +240,8 @@ class MRX_EntitySnapshots
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Items of the storage and everything they hold, at any depth.
-	protected static void CollectItems(notnull BaseInventoryStorageComponent storage, notnull array<IEntity> outItems)
+	//! Items of the storage and everything they hold, at any depth (each item before its contents).
+	static void CollectItems(notnull BaseInventoryStorageComponent storage, notnull array<IEntity> outItems)
 	{
 		array<InventoryItemComponent> items = {};
 		storage.GetOwnedItems(items, false);

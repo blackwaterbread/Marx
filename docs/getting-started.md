@@ -40,7 +40,8 @@ your mod (or on `ChimeraSystemsConfig.conf` to point `MRX_MarxSystem` at another
 | Max recent entries | 50 | Ledger entries kept per wallet |
 | Max recent keys | 200 | Idempotency keys kept per wallet and per stash; older keys are no longer detected as duplicates |
 | Max stash assets | 100 | Stashed and deployed assets per owner, 0 = no limit |
-| Loadout slots | 3 | Loadouts a player can save at a stash point (`Marx_Stash`), 0 = off; see [Stash](stash.md#loadouts) |
+| Loadout slots | 3 | Loadout slots every player has unlocked at a stash point (`Marx_Stash`), 0 = off; see [Stash](stash.md#loadouts) |
+| Max loadout slots | 10 | Loadout slots the loadout window shows; the ones beyond a player's unlocked slots are locked until added |
 | Loss policy | keep on death, restore after restart | See [Stash](stash.md) |
 | Currencies | one `cash` currency | ID, initial balance, maximum balance, negative balances allowed |
 

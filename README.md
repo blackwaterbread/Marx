@@ -32,7 +32,8 @@ stash point; both bring `Marx_UI`, which also shows the balances in the inventor
   every item keeps its cell). Stored items keep their attachments, magazines, contents, damage and fuel. Assets move through `STASHED`, `DEPLOYED`, `LOST` and `CONSUMED`; a loss policy decides what happens on death
   and after a server restart.
 - **Loadouts:** saved loadouts at the stash. Putting one on uses what the player already has, buys what is missing and
-  sells the rest at shop prices. Issued gear (e.g. a respawn kit) is worth nothing.
+  sells the rest at shop prices, or takes missing items from the stash and stores the rest. Issued gear (e.g. a
+  respawn kit) is worth nothing.
 - **Storage:** the game's own persistence system (`GamemodeStorage`, committed after every change), with an in-memory
   fallback. A REST backend for shared databases is planned.
 - **Admin:** `#marx balance|give|take` in the chat for logged-in administrators, and over RCON.

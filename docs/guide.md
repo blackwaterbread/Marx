@@ -303,7 +303,7 @@ for the stash (`MRX_StashValidator.CanDeposit` / `CanWithdraw`, added with `MRX_
 
 ## Step 8: Show money in your own UI
 
-Marx already shows the balance below the vicinity panel of the inventory (`MRX_BalancePanel`; turn it off with
+Marx already shows the balance below the quick slots of the inventory (`MRX_BalancePanel`; turn it off with
 `MRX_BalancePanel.SetShownInInventory(false)`). For your own UI, read the client-side copy of the local player's wallet:
 
 ```c

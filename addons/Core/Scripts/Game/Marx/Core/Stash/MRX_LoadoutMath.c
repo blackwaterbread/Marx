@@ -1,5 +1,6 @@
 //! What putting on a saved loadout costs (API v0): items the player already has are used again, missing ones are bought,
-//! the player's other items are sold. No engine dependencies.
+//! the player's other items are sold. With the stash, missing items come from the stash before they are bought, and the
+//! player's other items go into the stash instead of being sold. No engine dependencies.
 class MRX_LoadoutPlan : Managed
 {
 	string m_sCurrency;
@@ -12,12 +13,20 @@ class MRX_LoadoutPlan : Managed
 	int m_iReusedCount;
 	int m_iBoughtCount;
 	int m_iSoldCount;
-	//! Items of the loadout left out: not the player's and not for sale.
+	//! Items of the loadout taken from the stash.
+	int m_iStashCount;
+	//! The player's items the loadout does not use that go into the stash.
+	int m_iStoredCount;
+	//! Items of the loadout left out: not the player's, not in the stash and not for sale.
 	int m_iUnavailableCount;
 	//! Bought items by prefab key (MRX_LoadoutMath.GetPrefabKey).
 	ref map<string, int> m_mBought = new map<string, int>();
 	//! Buy price of each bought prefab key.
 	ref map<string, int> m_mBuyPrices = new map<string, int>();
+	//! Items taken from the stash by prefab key.
+	ref map<string, int> m_mFromStash = new map<string, int>();
+	//! The player's items the loadout does not use (sold, or stored with the stash) by prefab key.
+	ref map<string, int> m_mLeftover = new map<string, int>();
 
 	//------------------------------------------------------------------------------------------------
 	//! \return Buy total minus sell total: positive to pay, negative to receive.
@@ -31,22 +40,32 @@ class MRX_LoadoutPlan : Managed
 	bool IsSameAs(MRX_LoadoutPlan other)
 	{
 		return other && other.m_iBuyTotal == m_iBuyTotal && other.m_iSellTotal == m_iSellTotal && other.m_iReusedCount == m_iReusedCount
-			&& other.m_iBoughtCount == m_iBoughtCount && other.m_iSoldCount == m_iSoldCount && other.m_sCurrency == m_sCurrency;
+			&& other.m_iBoughtCount == m_iBoughtCount && other.m_iSoldCount == m_iSoldCount && other.m_iStashCount == m_iStashCount
+			&& other.m_iStoredCount == m_iStoredCount && other.m_sCurrency == m_sCurrency;
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Price of bought items the player did not get.
+	//! Price of bought items the player did not get. Missing items count against the stash first (GetStashTake).
 	//! \param received Prefab keys of the loadout items the player has after putting it on, with their counts.
 	int GetShortfallPrice(notnull map<string, int> received, notnull map<string, int> needed)
 	{
 		int total;
 		foreach (string key, int bought : m_mBought)
 		{
-			int missing = Math.Min(bought, Math.Max(0, needed.Get(key) - received.Get(key)));
+			int missing = Math.Max(0, needed.Get(key) - received.Get(key) - m_mFromStash.Get(key));
+			missing = Math.Min(bought, missing);
 			total = MRX_LoadoutMath.AddCapped(total, MRX_LoadoutMath.MultiplyCapped(m_mBuyPrices.Get(key), missing));
 		}
 
 		return total;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Items of the prefab key to take from the stash once the loadout is on: those planned, less the missing ones.
+	int GetStashTake(string key, notnull map<string, int> received, notnull map<string, int> needed)
+	{
+		int missing = Math.Max(0, needed.Get(key) - received.Get(key));
+		return Math.Max(0, m_mFromStash.Get(key) - missing);
 	}
 }
 
@@ -56,28 +75,23 @@ class MRX_LoadoutMath
 	//------------------------------------------------------------------------------------------------
 	//! \param loadout Saved loadout; its root (the character) is not counted.
 	//! \param ownItems Prefabs of the player's items that count (one entry per item).
-	static MRX_LoadoutPlan Plan(notnull MRX_ItemSnapshot loadout, notnull array<ResourceName> ownItems, notnull MRX_PriceList prices)
+	//! \param stashItems Prefabs of the stashed items that count, to use the stash; null to not use it.
+	static MRX_LoadoutPlan Plan(notnull MRX_ItemSnapshot loadout, notnull array<ResourceName> ownItems, notnull MRX_PriceList prices, array<ResourceName> stashItems = null)
 	{
 		MRX_LoadoutPlan plan = new MRX_LoadoutPlan();
 		plan.m_sCurrency = prices.GetCurrency();
 
-		map<string, int> remaining = new map<string, int>();
 		map<string, ResourceName> ownedPrefabs = new map<string, ResourceName>();
-		foreach (ResourceName prefab : ownItems)
-		{
-			string key = GetPrefabKey(prefab);
-			if (key.IsEmpty())
-				continue;
-
-			remaining.Set(key, remaining.Get(key) + 1);
-			ownedPrefabs.Set(key, prefab);
-		}
+		map<string, int> remaining = CountPrefabs(ownItems, ownedPrefabs);
+		map<string, int> stashed;
+		if (stashItems)
+			stashed = CountPrefabs(stashItems, new map<string, ResourceName>());
 
 		plan.m_Loadout = MRX_ItemSnapshot.Create(loadout.m_sPrefab);
 		plan.m_Loadout.m_iFormat = loadout.m_iFormat;
 		foreach (MRX_ItemSnapshot child : loadout.m_aChildren)
 		{
-			MRX_ItemSnapshot kept = PlanItem(child, remaining, prices, plan);
+			MRX_ItemSnapshot kept = PlanItem(child, remaining, stashed, prices, plan);
 			if (kept)
 				plan.m_Loadout.m_aChildren.Insert(kept);
 		}
@@ -86,6 +100,13 @@ class MRX_LoadoutMath
 		{
 			if (left <= 0)
 				continue;
+
+			plan.m_mLeftover.Set(ownedKey, left);
+			if (stashItems)
+			{
+				plan.m_iStoredCount += left;
+				continue;
+			}
 
 			plan.m_iSoldCount += left;
 			int sellPrice = prices.GetSellPrice(ownedPrefabs.Get(ownedKey));
@@ -147,9 +168,29 @@ class MRX_LoadoutMath
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! \param outPrefabs A prefab of each counted key.
+	//! \return Number of items by prefab key.
+	protected static map<string, int> CountPrefabs(notnull array<ResourceName> prefabs, notnull map<string, ResourceName> outPrefabs)
+	{
+		map<string, int> counts = new map<string, int>();
+		foreach (ResourceName prefab : prefabs)
+		{
+			string key = GetPrefabKey(prefab);
+			if (key.IsEmpty())
+				continue;
+
+			counts.Set(key, counts.Get(key) + 1);
+			outPrefabs.Set(key, prefab);
+		}
+
+		return counts;
+	}
+
+	//------------------------------------------------------------------------------------------------
 	//! Decides one item and then its contents (an item left out takes its contents with it).
+	//! \param stashed Stashed items left by prefab key, or null when the stash is not used.
 	//! \return Copy of the item with the kept contents, or null when it is left out.
-	protected static MRX_ItemSnapshot PlanItem(notnull MRX_ItemSnapshot item, notnull map<string, int> remaining, notnull MRX_PriceList prices, notnull MRX_LoadoutPlan plan)
+	protected static MRX_ItemSnapshot PlanItem(notnull MRX_ItemSnapshot item, notnull map<string, int> remaining, map<string, int> stashed, notnull MRX_PriceList prices, notnull MRX_LoadoutPlan plan)
 	{
 		string key = GetPrefabKey(item.m_sPrefab);
 		int left = remaining.Get(key);
@@ -157,6 +198,12 @@ class MRX_LoadoutMath
 		{
 			remaining.Set(key, left - 1);
 			plan.m_iReusedCount++;
+		}
+		else if (stashed && stashed.Get(key) > 0)
+		{
+			stashed.Set(key, stashed.Get(key) - 1);
+			plan.m_iStashCount++;
+			plan.m_mFromStash.Set(key, plan.m_mFromStash.Get(key) + 1);
 		}
 		else
 		{
@@ -177,7 +224,7 @@ class MRX_LoadoutMath
 		kept.m_aChildren.Clear();
 		foreach (MRX_ItemSnapshot child : item.m_aChildren)
 		{
-			MRX_ItemSnapshot keptChild = PlanItem(child, remaining, prices, plan);
+			MRX_ItemSnapshot keptChild = PlanItem(child, remaining, stashed, prices, plan);
 			if (keptChild)
 				kept.m_aChildren.Insert(keptChild);
 		}
