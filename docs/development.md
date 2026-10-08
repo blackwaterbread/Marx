@@ -34,16 +34,48 @@ Command line switches (passed by the launch script):
 
 Typical loop: open `worlds/GameMaster/GM_Arland.ent`, press Play, read the `[MRX_TEST]` lines in the log.
 
-For trying the stash by hand, `#marxkit` in the chat (Workbench only, administrators) puts three different backpacks
-and a few small items into your stash; reopen an open stash to see them.
+## Debug actions
 
-For looking at the windows without typing in the game (e.g. from automation), the server reads one command from
-`$profile:mrx_ui_cmd.txt` every half second in Workbench Play (`MRX_TestUiCommands`): `shop` opens the sample shop
-with a sample product, `stash` opens a stash next to the player, `loadout <slot>` saves the player's gear into a slot of
-the open stash (with test prices), `loadouts` opens the loadout window, `load <slot>` puts a slot on as its Load button
-does, `addslot` gives the player one more loadout slot, `tostash` moves the weapon in the player's hands into the open
-stash, `give` spawns a compass into the player's inventory, `lang <code>` switches the UI language (e.g. `lang ko_kr`),
-`close` closes the menus.
+For trying things by hand, Marx has debug actions (`Scripts/Game/Marx/Debug/` in Core, `Debug/` folders in the other
+addons). Each has an ID `<page>.<name>` and positional values; missing or empty values take the default. Three entry
+points run the same actions:
+
+- **Debug panel** (diag builds: Workbench, PeerTool peers, diag executables): open the diag menu (Win+Alt) and turn on
+  **Marx > Debug panel**. One page per area, a button and value fields per action, the player, owner and wallet, and
+  the latest results.
+- **File command** (Workbench Play only): write one line `<action ID> [values...]` to `$profile:mrx_cmd.txt`
+  (`Documents\My Games\ArmaReforgerWorkbench\profile\`); the host reads it every half second and deletes it. Meant for
+  automation that cannot type in the game view.
+- **Chat or RCON**: `#mrxdbg <action ID> [values...]` (administrators; `#mrxdbg` alone lists the IDs). Only actions
+  without a client part; over RCON there is no player, so actions that need a character fail.
+
+Every result is logged as `[MRX_DBG] <action ID> <STATUS> <text>`. Server parts run only in developer builds
+(`Game.IsDev()`); elsewhere the server answers `REJECTED`. Consumer mods add their own actions in a
+`modded class MRX_DebugRegistry` (`RegisterActions`, after `super.RegisterActions()`).
+
+| ID | Values | Does |
+|---|---|---|
+| `marx.info` | | player, owner ID, identity, storage backend, economy state |
+| `marx.char` | player | gives a player without a character (e.g. a PeerTool client in Game Master) one next to you |
+| `marx.item` | prefab, count=1 | spawns items into your inventory |
+| `marx.inv`, `marx.close`, `marx.pause` | | opens the inventory, closes the menus, opens the pause menu |
+| `marx.equip`, `marx.view`, `marx.kill` | | takes the first weapon in hand, switches 1st/3rd person, kills your character |
+| `marx.hands`, `marx.gear` | | what you hold, what you carry (issued items, magazine rounds), as the server sees it |
+| `wallet.give`, `wallet.take` | amount, currency=default, player=me | changes a balance through the ledger (source `marx_debug`) |
+| `wallet.history` | count=10, currency=default | your latest ledger entries (`all` for every currency) |
+| `ui.lang` | code=ko_kr | switches the UI language |
+| `ui.dialog` | kind=basic | a sample `MRX_ScriptedDialog` (`basic`, `scroll`, `items`) |
+| `ui.gallery` | | the Marx widgets in their states |
+| `shop.open` | | opens the nearest shop within 30 m, or spawns the sample shop table |
+| `stash.open` | | opens the stash at the nearest stash point within 30 m, or spawns the sample stash wardrobe |
+| `stash.kit` | | puts three backpacks and a few small items into your stash (reopen it to see them) |
+| `stash.fromhands` | | moves the weapon in your hands into the open stash |
+| `loadout.save` | slot=0 | saves your gear into a slot of the open stash (needs a price list) |
+| `loadout.window` | | opens the loadout window |
+| `loadout.load` | slot=0 | puts a slot on as the Load button of the open loadout window does |
+| `loadout.addslot` | | unlocks one more loadout slot (shown from the next opening of the stash) |
+| `sample.product` | | Example, Workbench only: adds a sample product to the nearest shop |
+| `sample.prices` | | Example, Workbench only: sets the test prices as the price list |
 
 ## Workbench plugins (Plugins > Marx)
 

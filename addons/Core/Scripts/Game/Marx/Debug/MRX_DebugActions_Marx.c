@@ -30,6 +30,66 @@ class MRX_DebugActionUtils
 	{
 		return MRX_DebugResult.Failed("You have no character");
 	}
+
+	//------------------------------------------------------------------------------------------------
+	//! The nearest entity with the component within the radius, or null.
+	static IEntity FindNear(vector center, float radius, typename componentType)
+	{
+		MRX_DebugEntityQuery query = new MRX_DebugEntityQuery(center, componentType);
+		GetGame().GetWorld().QueryEntitiesBySphere(center, radius, query.OnEntity);
+		return query.GetFound();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Spawns a prefab on the ground in front of the character.
+	static IEntity SpawnInFront(notnull IEntity character, ResourceName prefab, float distance)
+	{
+		vector position = character.GetOrigin() + character.GetTransformAxis(2) * distance;
+		position[1] = GetGame().GetWorld().GetSurfaceY(position[0], position[2]);
+		EntitySpawnParams params = new EntitySpawnParams();
+		params.TransformMode = ETransformMode.WORLD;
+		params.Transform[3] = position;
+		return GetGame().SpawnEntityPrefab(Resource.Load(prefab), GetGame().GetWorld(), params);
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Finds the nearest entity with a component. Internal.
+class MRX_DebugEntityQuery : Managed
+{
+	protected vector m_vCenter;
+	protected typename m_ComponentType;
+	protected IEntity m_Found;
+	protected float m_fFoundDistanceSq;
+
+	//------------------------------------------------------------------------------------------------
+	void MRX_DebugEntityQuery(vector center, typename componentType)
+	{
+		m_vCenter = center;
+		m_ComponentType = componentType;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	bool OnEntity(IEntity entity)
+	{
+		if (!entity.FindComponent(m_ComponentType))
+			return true;
+
+		float distanceSq = vector.DistanceSq(m_vCenter, entity.GetOrigin());
+		if (!m_Found || distanceSq < m_fFoundDistanceSq)
+		{
+			m_Found = entity;
+			m_fFoundDistanceSq = distanceSq;
+		}
+
+		return true;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	IEntity GetFound()
+	{
+		return m_Found;
+	}
 }
 
 //------------------------------------------------------------------------------------------------
