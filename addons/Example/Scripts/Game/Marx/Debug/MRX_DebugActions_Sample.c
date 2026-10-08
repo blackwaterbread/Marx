@@ -105,6 +105,9 @@ class MRX_DebugSampleProduct : MRX_DebugAction
 		item.m_sCategory = "Services";
 		item.m_sDescription = "One more stash page (6 x 8 cells)";
 		item.m_Product = product;
+		if (!catalog.m_aItems)
+			catalog.m_aItems = {};
+
 		catalog.m_aItems.InsertAt(item, 0);
 		return true;
 	}

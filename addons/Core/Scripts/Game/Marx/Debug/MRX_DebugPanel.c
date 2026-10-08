@@ -180,7 +180,10 @@ class MRX_DebugPanel : Managed
 			if (i < recent.Count() - 1)
 				text = Shorten(text);
 
+			// Two equal lines would otherwise be one widget.
+			DbgUI.PushID(i);
 			DbgUI.Text(string.Format("%1 %2 %3 %4", record.GetTimeText(), record.m_sActionId, record.GetStatusText(), text));
+			DbgUI.PopID();
 		}
 	}
 

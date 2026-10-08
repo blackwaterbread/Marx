@@ -51,6 +51,8 @@ class MRX_DebugRunner
 		request.m_sActionId = actionId;
 		request.m_aValues.Copy(values);
 		s_mRequests.Set(request.m_iId, request);
+		// Also ends requests whose parts stopped with a script error and never answered.
+		GetGame().GetCallqueue().CallLater(CheckTimeout, TIMEOUT_MS, false, request.m_iId);
 
 		if (!action.HasServerPart())
 		{
@@ -65,7 +67,6 @@ class MRX_DebugRunner
 			return;
 		}
 
-		GetGame().GetCallqueue().CallLater(CheckTimeout, TIMEOUT_MS, false, request.m_iId);
 		if (Replication.IsServer())
 			Execute(registry, controller.GetPlayerId(), actionId, values, new MRX_DebugLocalReply(request.m_iId));
 		else
@@ -200,8 +201,24 @@ class MRX_DebugRunner
 	protected static void CheckTimeout(int requestId)
 	{
 		MRX_DebugRequest request = s_mRequests.Get(requestId);
-		if (request && !request.m_ServerResult)
+		if (!request)
+			return;
+
+		if (!request.m_ServerResult)
+		{
 			Finish(requestId, MRX_DebugResult.Create(MRX_EDebugStatus.TIMEOUT, string.Format("No answer from the server within %1 ms", TIMEOUT_MS)));
+			return;
+		}
+
+		// The server answered: the client part may still wait for the entity.
+		int waitedMs = System.GetTickCount() - request.m_iEntityWaitStart;
+		if (waitedMs < ENTITY_WAIT_MS + ENTITY_STEP_MS * 2)
+		{
+			GetGame().GetCallqueue().CallLater(CheckTimeout, ENTITY_WAIT_MS + ENTITY_STEP_MS * 2 - waitedMs, false, requestId);
+			return;
+		}
+
+		Finish(requestId, MRX_DebugResult.Failed("The client part did not finish (script error?)"));
 	}
 
 	//------------------------------------------------------------------------------------------------

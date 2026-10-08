@@ -2,6 +2,9 @@
 //! same RPCs; the server runs them only behind MRX_DebugRunner.IsAllowed.
 modded class SCR_PlayerController
 {
+	//! Server: a refused debug request of this player was logged; later ones are refused silently.
+	protected bool m_bMRX_DebugRefusalLogged;
+
 	//------------------------------------------------------------------------------------------------
 	//! Client: asks the server to run the server part of a debug action. Use MRX_DebugRunner.Request.
 	void MRX_RequestDebug(int requestId, string actionId, notnull array<string> values)
@@ -22,7 +25,10 @@ modded class SCR_PlayerController
 	{
 		if (!MRX_DebugRunner.IsAllowed())
 		{
-			Print(MRX_DebugRunner.LOG_TAG + string.Format("refused '%1' for player %2: not a developer build", actionId, GetPlayerId()), LogLevel.WARNING);
+			if (!m_bMRX_DebugRefusalLogged)
+				Print(MRX_DebugRunner.LOG_TAG + string.Format("refused debug requests of player %1: not a developer build", GetPlayerId()), LogLevel.WARNING);
+
+			m_bMRX_DebugRefusalLogged = true;
 			MRX_SendDebugResult(requestId, MRX_DebugResult.Create(MRX_EDebugStatus.REJECTED, "Debug actions run only in developer builds"));
 			return;
 		}

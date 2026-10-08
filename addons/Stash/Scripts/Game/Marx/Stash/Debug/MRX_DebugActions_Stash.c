@@ -20,12 +20,10 @@ modded class MRX_DebugRegistry
 //------------------------------------------------------------------------------------------------
 class MRX_DebugStashUtils
 {
-	static const string LEDGER_SOURCE = "marx_debug";
-
 	//------------------------------------------------------------------------------------------------
 	static MRX_TxContext CreateTxContext(string actionId)
 	{
-		return MRX_TxContext.Create(LEDGER_SOURCE, actionId, "debug:" + MRX_Marx.NewId());
+		return MRX_TxContext.Create(MRX_DebugWallet.LEDGER_SOURCE, actionId, "debug:" + MRX_Marx.NewId());
 	}
 
 	//------------------------------------------------------------------------------------------------
