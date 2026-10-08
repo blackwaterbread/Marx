@@ -32,6 +32,7 @@ tools/           build/validation scripts
 
 ## Architecture rules (non-negotiable)
 - Server-authoritative. Clients only send requests via RPC; RPCs carry IDs, never prices/amounts/permissions. Server resolves everything from config/state.
+- Debug actions (`Debug/`) are the only RPCs that carry values; the server runs them only in developer builds (`IsDev()`).
 - All storage access goes through `MRX_IStorageBackend`. All calls are async (callback-based), even for local backends.
 - Backends: InMemory (tests), Native (Reforger PersistenceSystem), REST (external, via `RestContext`). EPF is deprecated — do not use or reference it.
 - Every balance change goes through `MRX_EconomyService` with an `MRX_TxContext` (source, reason, idempotency key). Never mutate balances directly. Ledger is the source of truth.
