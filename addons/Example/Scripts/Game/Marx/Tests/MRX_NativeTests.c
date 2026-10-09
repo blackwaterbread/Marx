@@ -26,10 +26,19 @@ class MRX_NativeTests
 class MRX_TestFailingNativeBackend : MRX_NativeBackend
 {
 	bool m_bFailNextCommit = true;
+	int m_iCommitsStarted;
+
+	//------------------------------------------------------------------------------------------------
+	//! No commit running, queued or waiting for a retry.
+	bool IsIdle()
+	{
+		return !m_bCommitting && m_aCommitQueue.IsEmpty() && m_aRetryQueue.IsEmpty();
+	}
 
 	//------------------------------------------------------------------------------------------------
 	override protected void StartCommit()
 	{
+		m_iCommitsStarted++;
 		if (!m_bFailNextCommit)
 		{
 			super.StartCommit();
@@ -57,6 +66,18 @@ class MRX_TestFailingNativeBackend : MRX_NativeBackend
 class MRX_TestSavedNativeBackend : MRX_NativeBackend
 {
 	bool m_bSaveNextCommit = true;
+
+	//------------------------------------------------------------------------------------------------
+	bool IsCommitting()
+	{
+		return m_bCommitting;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	bool HasRetries()
+	{
+		return !m_aRetryQueue.IsEmpty();
+	}
 
 	//------------------------------------------------------------------------------------------------
 	override protected void StartCommit()
@@ -150,14 +171,23 @@ class MRX_Test_NativeRoundTrip : MRX_TestCase
 }
 
 //------------------------------------------------------------------------------------------------
-//! A failed commit restores the wallet, and the idempotency key stays usable for the retry.
+//! A wallet change answers before its commit. A failed commit keeps the change and is retried in the background; the
+//! idempotency key stays used.
 class MRX_Test_NativeCommitFailure : MRX_TestCase
 {
 	protected static const string OWNER = "marx-test:native-commit-failure";
+	protected static const int POLL_MS = 250;
 
+	protected ref MRX_TestFailingNativeBackend m_Backend;
 	protected ref MRX_EconomyService m_Service;
 	protected string m_sKey;
 	protected int m_iBalanceBefore;
+
+	//------------------------------------------------------------------------------------------------
+	override int GetTimeoutMs()
+	{
+		return 20000;
+	}
 
 	//------------------------------------------------------------------------------------------------
 	override protected void Run()
@@ -168,7 +198,8 @@ class MRX_Test_NativeCommitFailure : MRX_TestCase
 			return;
 		}
 
-		m_Service = new MRX_EconomyService(new MRX_TestFailingNativeBackend(), MRX_TestUtils.CreateRules());
+		m_Backend = new MRX_TestFailingNativeBackend();
+		m_Service = new MRX_EconomyService(m_Backend, MRX_TestUtils.CreateRules());
 		m_Service.Init();
 		m_sKey = MRX_NativeTests.UniqueKey("commit-failure");
 
@@ -184,53 +215,73 @@ class MRX_Test_NativeCommitFailure : MRX_TestCase
 		m_iBalanceBefore = balance;
 
 		MRX_TxCallback callback = new MRX_TxCallback();
-		callback.GetOnResult().Insert(OnFailedCredit);
+		callback.GetOnResult().Insert(OnCredited);
 		m_Service.Credit(OWNER, "cash", 5, MRX_TxContext.Create("test", "commit failure", m_sKey), callback);
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void OnFailedCredit(MRX_TxResult result)
+	protected void OnCredited(MRX_TxResult result)
 	{
-		CheckStatus(result.m_eStatus, MRX_ETxStatus.STORAGE_ERROR, "credit with failing commit");
+		CheckStatus(result.m_eStatus, MRX_ETxStatus.OK, "credit answers before its (failing) commit");
+		if (!result.m_aEntries.IsEmpty())
+			CheckInt(result.m_aEntries[0].m_iBalanceAfter, m_iBalanceBefore + 5, "balance after credit");
 
+		GetGame().GetCallqueue().CallLater(WaitForRetry, POLL_MS);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void WaitForRetry()
+	{
+		if (!m_Backend.IsIdle())
+		{
+			GetGame().GetCallqueue().CallLater(WaitForRetry, POLL_MS);
+			return;
+		}
+
+		CheckInt(m_Backend.m_iCommitsStarted, 2, "failed commit, then its retry");
 		MRX_BalanceCallback callback = new MRX_BalanceCallback();
-		callback.GetOnResult().Insert(OnBalanceAfterFailure);
+		callback.GetOnResult().Insert(OnBalanceAfterRetry);
 		m_Service.GetBalance(OWNER, "cash", callback);
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void OnBalanceAfterFailure(MRX_ETxStatus status, int balance)
+	protected void OnBalanceAfterRetry(MRX_ETxStatus status, int balance)
 	{
-		CheckInt(balance, m_iBalanceBefore, "balance restored");
+		CheckInt(balance, m_iBalanceBefore + 5, "change kept after the failed commit");
 
 		MRX_TxCallback callback = new MRX_TxCallback();
-		callback.GetOnResult().Insert(OnRetriedCredit);
+		callback.GetOnResult().Insert(OnSameKey);
 		m_Service.Credit(OWNER, "cash", 5, MRX_TxContext.Create("test", "commit failure retry", m_sKey), callback);
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void OnRetriedCredit(MRX_TxResult result)
+	protected void OnSameKey(MRX_TxResult result)
 	{
-		CheckStatus(result.m_eStatus, MRX_ETxStatus.OK, "retry with the same key");
-		if (!result.m_aEntries.IsEmpty())
-			CheckInt(result.m_aEntries[0].m_iBalanceAfter, m_iBalanceBefore + 5, "balance after retry");
-
+		CheckStatus(result.m_eStatus, MRX_ETxStatus.DUPLICATE, "same key again");
 		Finish();
 	}
 }
 
 //------------------------------------------------------------------------------------------------
-//! A commit that never answers while a game save completes counts as written: the credit succeeds soon after the save,
-//! long before the commit timeout.
+//! A commit that never answers while a game save completes counts as written: it ends soon after the save, long before
+//! the commit timeout, and is not retried.
 class MRX_Test_NativeCommitAfterSave : MRX_TestCase
 {
 	protected static const string OWNER = "marx-test:native-commit-after-save";
 	//! Well below the commit timeout of the backend.
 	protected static const int MAX_WAIT_MS = 4000;
+	protected static const int POLL_MS = 100;
 
+	protected ref MRX_TestSavedNativeBackend m_Backend;
 	protected ref MRX_EconomyService m_Service;
 	protected int m_iBalanceBefore;
 	protected int m_iStartTick;
+
+	//------------------------------------------------------------------------------------------------
+	override int GetTimeoutMs()
+	{
+		return 10000;
+	}
 
 	//------------------------------------------------------------------------------------------------
 	override protected void Run()
@@ -241,7 +292,8 @@ class MRX_Test_NativeCommitAfterSave : MRX_TestCase
 			return;
 		}
 
-		m_Service = new MRX_EconomyService(new MRX_TestSavedNativeBackend(), MRX_TestUtils.CreateRules());
+		m_Backend = new MRX_TestSavedNativeBackend();
+		m_Service = new MRX_EconomyService(m_Backend, MRX_TestUtils.CreateRules());
 		m_Service.Init();
 
 		MRX_BalanceCallback callback = new MRX_BalanceCallback();
@@ -264,12 +316,25 @@ class MRX_Test_NativeCommitAfterSave : MRX_TestCase
 	//------------------------------------------------------------------------------------------------
 	protected void OnCredited(MRX_TxResult result)
 	{
-		int waitedMs = System.GetTickCount() - m_iStartTick;
 		CheckStatus(result.m_eStatus, MRX_ETxStatus.OK, "credit whose changes a game save wrote");
 		if (!result.m_aEntries.IsEmpty())
 			CheckInt(result.m_aEntries[0].m_iBalanceAfter, m_iBalanceBefore + 3, "balance after credit");
 
-		Check(waitedMs < MAX_WAIT_MS, string.Format("finished soon after the save (%1 ms)", waitedMs));
+		GetGame().GetCallqueue().CallLater(WaitForCommit, POLL_MS);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void WaitForCommit()
+	{
+		if (m_Backend.IsCommitting())
+		{
+			GetGame().GetCallqueue().CallLater(WaitForCommit, POLL_MS);
+			return;
+		}
+
+		int waitedMs = System.GetTickCount() - m_iStartTick;
+		Check(waitedMs < MAX_WAIT_MS, string.Format("commit ended soon after the save (%1 ms)", waitedMs));
+		Check(!m_Backend.HasRetries(), "commit counted as written (no retry)");
 		Finish();
 	}
 }

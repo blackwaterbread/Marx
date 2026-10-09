@@ -20,7 +20,11 @@ class MRX_ShopTests
 		runner.Add(new MRX_Test_ShopBuyRefused());
 		runner.Add(new MRX_Test_ShopNoSpace());
 		runner.Add(new MRX_Test_ShopDeliveryRefund());
-		runner.Add(new MRX_Test_ShopBusy());
+		runner.Add(new MRX_Test_ShopQueue());
+		runner.Add(new MRX_Test_ShopQueueFull());
+		runner.Add(new MRX_Test_ShopPaymentUnknown());
+		runner.Add(new MRX_Test_ShopPaymentFailedOnce());
+		runner.Add(new MRX_Test_ShopPaymentFailedTwice());
 		runner.Add(new MRX_Test_ShopSell());
 		runner.Add(new MRX_Test_ShopSellDisabled());
 		runner.Add(new MRX_Test_ShopValidator());
@@ -280,7 +284,7 @@ class MRX_ShopScenarioTest : MRX_TestCase
 		m_Identity.SimulateAudit(1);
 		m_Identity.SimulateAudit(2);
 
-		m_Economy = MRX_TestUtils.CreateService();
+		m_Economy = CreateEconomy();
 		m_Inventory = new MRX_TestShopInventory();
 		m_Shop = new MRX_ShopService(m_Economy, m_Identity, m_Inventory);
 		m_Shop.GetOnPurchase().Insert(OnPurchase);
@@ -294,6 +298,12 @@ class MRX_ShopScenarioTest : MRX_TestCase
 
 		DefineSteps();
 		NextStep();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected MRX_EconomyService CreateEconomy()
+	{
+		return MRX_TestUtils.CreateService();
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -562,50 +572,273 @@ class MRX_Test_ShopDeliveryRefund : MRX_ShopScenarioTest
 }
 
 //------------------------------------------------------------------------------------------------
-//! A second request of the same player while the first one runs is answered with BUSY.
-class MRX_Test_ShopBusy : MRX_ShopScenarioTest
+//! Shop answer that records the index of its request in the order of the answers. Internal.
+class MRX_TestOrderedShopCallback : MRX_ShopCallback
 {
-	protected ref MRX_ShopCallback m_FirstCallback;
-	protected ref MRX_ShopCallback m_SecondCallback;
-	protected int m_iAnswers;
+	protected int m_iIndex;
+	protected ref array<int> m_aOrder;
+	protected ref array<MRX_EShopStatus> m_aStatuses;
+
+	//------------------------------------------------------------------------------------------------
+	void MRX_TestOrderedShopCallback(int index, array<int> order, array<MRX_EShopStatus> statuses)
+	{
+		m_iIndex = index;
+		m_aOrder = order;
+		m_aStatuses = statuses;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void OnResult(MRX_ShopResult result)
+	{
+		m_aOrder.Insert(m_iIndex);
+		m_aStatuses.Insert(result.m_eStatus);
+		super.OnResult(result);
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Several requests of the same player sent at once all run, one after another, in the order they came in.
+class MRX_Test_ShopQueue : MRX_ShopScenarioTest
+{
+	protected static const int REQUESTS = 3;
+
+	protected ref array<ref MRX_ShopCallback> m_aCallbacks = {};
+	protected ref array<int> m_aOrder = {};
+	protected ref array<MRX_EShopStatus> m_aStatuses = {};
 
 	//------------------------------------------------------------------------------------------------
 	override protected void DefineSteps()
 	{
-		m_FirstCallback = new MRX_ShopCallback();
-		m_FirstCallback.GetOnResult().Insert(OnFirst);
-		m_SecondCallback = new MRX_ShopCallback();
-		m_SecondCallback.GetOnResult().Insert(OnSecond);
-		m_Shop.Buy(1, m_ShopDef, "ammo", m_FirstCallback);
-		m_Shop.Buy(1, m_ShopDef, "ammo", m_SecondCallback);
+		for (int i = 0; i < REQUESTS; i++)
+		{
+			MRX_ShopCallback callback = new MRX_TestOrderedShopCallback(i, m_aOrder, m_aStatuses);
+			callback.GetOnResult().Insert(OnAnswer);
+			m_aCallbacks.Insert(callback);
+			m_Shop.Buy(1, m_ShopDef, "ammo", callback);
+		}
 	}
 
 	//------------------------------------------------------------------------------------------------
 	override protected void NextStep()
 	{
-		// Steps are not used; the two answers finish the test.
+		// Steps are not used; the answers finish the test.
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void OnFirst(MRX_ShopResult result)
+	protected void OnAnswer(MRX_ShopResult result)
 	{
-		Check(result.m_eStatus == MRX_EShopStatus.OK, "first request should succeed");
-		Answered();
+		if (m_aOrder.Count() < REQUESTS)
+			return;
+
+		for (int i = 0; i < REQUESTS; i++)
+		{
+			CheckInt(m_aOrder[i], i, "answer order");
+			Check(m_aStatuses[i] == MRX_EShopStatus.OK, string.Format("request %1 succeeds, got %2", i, typename.EnumToString(MRX_EShopStatus, m_aStatuses[i])));
+		}
+
+		CheckInt(m_Inventory.m_aGiven.Count(), REQUESTS, "items given");
+		MRX_BalanceCallback callback = new MRX_BalanceCallback();
+		callback.GetOnResult().Insert(OnPaidBalance);
+		m_Economy.GetBalance("shop-a", "cash", callback);
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void OnSecond(MRX_ShopResult result)
+	protected void OnPaidBalance(MRX_ETxStatus status, int balance)
 	{
-		Check(result.m_eStatus == MRX_EShopStatus.BUSY, "second request should be BUSY");
-		Answered();
+		CheckInt(balance, 100 - REQUESTS * 10, "every purchase paid once");
+		Finish();
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! With MAX_WAITING_REQUESTS requests waiting behind the running one, the next request gets BUSY; the others still run.
+class MRX_Test_ShopQueueFull : MRX_ShopScenarioTest
+{
+	protected ref array<ref MRX_ShopCallback> m_aCallbacks = {};
+	protected ref array<int> m_aOrder = {};
+	protected ref array<MRX_EShopStatus> m_aStatuses = {};
+	protected int m_iRequests;
+
+	//------------------------------------------------------------------------------------------------
+	override protected void DefineSteps()
+	{
+		// The ammo purchase runs over several frames; the map is not for sale, so each of those requests ends as soon
+		// as it runs.
+		m_iRequests = MRX_ShopService.MAX_WAITING_REQUESTS + 2;
+		for (int i = 0; i < m_iRequests; i++)
+		{
+			MRX_ShopCallback callback = new MRX_TestOrderedShopCallback(i, m_aOrder, m_aStatuses);
+			callback.GetOnResult().Insert(OnAnswer);
+			m_aCallbacks.Insert(callback);
+			if (i == 0)
+				m_Shop.Buy(1, m_ShopDef, "ammo", callback);
+			else
+				m_Shop.Buy(1, m_ShopDef, "map", callback);
+		}
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected void Answered()
+	override protected void NextStep()
 	{
-		m_iAnswers++;
-		if (m_iAnswers == 2)
-			Finish();
+		// Steps are not used; the answers finish the test.
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnAnswer(MRX_ShopResult result)
+	{
+		if (m_aOrder.Count() < m_iRequests)
+			return;
+
+		int busy;
+		foreach (int i, int index : m_aOrder)
+		{
+			if (index == 0)
+			{
+				Check(m_aStatuses[i] == MRX_EShopStatus.OK, "the running purchase succeeds, got " + typename.EnumToString(MRX_EShopStatus, m_aStatuses[i]));
+				continue;
+			}
+
+			if (m_aStatuses[i] != MRX_EShopStatus.BUSY)
+			{
+				Check(m_aStatuses[i] == MRX_EShopStatus.NOT_FOR_SALE, string.Format("request %1 runs, got %2", index, typename.EnumToString(MRX_EShopStatus, m_aStatuses[i])));
+				continue;
+			}
+
+			busy++;
+			CheckInt(index, m_iRequests - 1, "the request over the limit is BUSY");
+		}
+
+		CheckInt(busy, 1, "BUSY answers");
+		Finish();
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! In-memory backend that answers STORAGE_ERROR to the next transactions, applied or not.
+class MRX_TestFlakyBackend : MRX_InMemoryBackend
+{
+	int m_iFailures;
+	//! True: the failing transactions are applied anyway (outcome unknown, like a commit without answer). Only the first
+	//! attempt of each idempotency key fails then.
+	bool m_bApplyFailures;
+	protected ref set<string> m_aFailedKeys = new set<string>();
+
+	//------------------------------------------------------------------------------------------------
+	override void ApplyTransaction(notnull MRX_TxRequest request, notnull MRX_TxCallback callback)
+	{
+		string key;
+		if (request.m_Context)
+			key = request.m_Context.m_sIdempotencyKey;
+
+		if (m_iFailures <= 0 || (m_bApplyFailures && m_aFailedKeys.Contains(key)))
+		{
+			super.ApplyTransaction(request, callback);
+			return;
+		}
+
+		m_iFailures--;
+		m_aFailedKeys.Insert(key);
+		if (m_bApplyFailures)
+			super.ApplyTransaction(request, new MRX_TestStorageErrorReply(callback));
+		else
+			m_CallQueue.PostTx(callback, MRX_TxResult.Create(MRX_ETxStatus.STORAGE_ERROR, request.m_sTxId));
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Reports STORAGE_ERROR whatever the transaction's result was. Internal.
+class MRX_TestStorageErrorReply : MRX_TxCallback
+{
+	protected ref MRX_TxCallback m_Callback;
+
+	//------------------------------------------------------------------------------------------------
+	void MRX_TestStorageErrorReply(MRX_TxCallback callback)
+	{
+		m_Callback = callback;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void OnResult(MRX_TxResult result)
+	{
+		m_Callback.OnResult(MRX_TxResult.Create(MRX_ETxStatus.STORAGE_ERROR, result.m_sTxId));
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Shop scenario on MRX_TestFlakyBackend.
+class MRX_ShopFlakyScenarioTest : MRX_ShopScenarioTest
+{
+	protected ref MRX_TestFlakyBackend m_Backend;
+
+	//------------------------------------------------------------------------------------------------
+	override protected MRX_EconomyService CreateEconomy()
+	{
+		m_Backend = new MRX_TestFlakyBackend();
+		MRX_EconomyService service = new MRX_EconomyService(m_Backend, MRX_TestUtils.CreateRules());
+		service.Init();
+		return service;
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Payments whose outcome is unknown went through: the retry with the same key answers DUPLICATE, the purchase is
+//! delivered and the sale keeps the item; each payment counts once.
+class MRX_Test_ShopPaymentUnknown : MRX_ShopFlakyScenarioTest
+{
+	//------------------------------------------------------------------------------------------------
+	override protected void DefineSteps()
+	{
+		m_Backend.m_iFailures = 2;
+		m_Backend.m_bApplyFailures = true;
+		Buy(1, "rifle");
+		Balance(1, 0);
+		Sell(1, AddSaleItem(1, MRX_ShopTests.PREFAB_RIFLE));
+		Balance(1, 50);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void CheckEnd()
+	{
+		CheckInt(m_Inventory.m_aGiven.Count(), 1, "rifle delivered");
+		CheckInt(m_Inventory.m_aGivenBack.Count(), 0, "sold rifle not given back");
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! A payment that failed once is applied by the retry.
+class MRX_Test_ShopPaymentFailedOnce : MRX_ShopFlakyScenarioTest
+{
+	//------------------------------------------------------------------------------------------------
+	override protected void DefineSteps()
+	{
+		m_Backend.m_iFailures = 1;
+		Buy(1, "rifle");
+		Balance(1, 0);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void CheckEnd()
+	{
+		CheckInt(m_Inventory.m_aGiven.Count(), 1, "rifle delivered");
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! A payment that fails twice ends the purchase without the item; nothing is paid.
+class MRX_Test_ShopPaymentFailedTwice : MRX_ShopFlakyScenarioTest
+{
+	//------------------------------------------------------------------------------------------------
+	override protected void DefineSteps()
+	{
+		m_Backend.m_iFailures = 2;
+		Buy(1, "rifle").Expect(MRX_EShopStatus.PAYMENT_FAILED).ExpectTx(MRX_ETxStatus.STORAGE_ERROR);
+		Balance(1, 100);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void CheckEnd()
+	{
+		CheckInt(m_Inventory.m_aGiven.Count(), 0, "nothing delivered");
 	}
 }
 

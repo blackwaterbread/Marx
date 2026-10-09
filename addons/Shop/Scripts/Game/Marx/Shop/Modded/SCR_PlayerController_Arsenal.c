@@ -20,12 +20,6 @@ modded class SCR_PlayerController
 	[RplRpc(RplChannel.Reliable, RplRcver.Server)]
 	protected void MRX_RpcAsk_ArsenalBuy(RplId arsenalId, RplId storageId, string itemId)
 	{
-		if (!MRX_CheckShopRequestRate())
-		{
-			MRX_ReplyShopStatus(MRX_EShopStatus.BUSY, itemId);
-			return;
-		}
-
 		BaseInventoryStorageComponent storage;
 		if (storageId.IsValid())
 			storage = BaseInventoryStorageComponent.Cast(Replication.FindItem(storageId));
@@ -40,12 +34,6 @@ modded class SCR_PlayerController
 	[RplRpc(RplChannel.Reliable, RplRcver.Server)]
 	protected void MRX_RpcAsk_ArsenalSell(RplId arsenalId, RplId itemId)
 	{
-		if (!MRX_CheckShopRequestRate())
-		{
-			MRX_ReplyShopStatus(MRX_EShopStatus.BUSY, string.Empty);
-			return;
-		}
-
 		IEntity item;
 		InventoryItemComponent itemComponent;
 		if (itemId.IsValid())

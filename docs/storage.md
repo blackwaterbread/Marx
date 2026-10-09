@@ -16,9 +16,14 @@ Each owner has one persistent scripted state per collection, identified by an ID
 | `MarxWallets` | `MRX_WalletState` | `MRX_WalletStateSerializer` |
 | `MarxStashes` | `MRX_StashState` | `MRX_StashStateSerializer` |
 
-After every change Marx saves the state and calls `CommitStorage(GamemodeStorage)`, so a change is on disk before the
-caller's callback reports OK. A failed commit restores the previous state; a commit that does not answer within 10 s
-reports `STORAGE_ERROR` without restoring, because it may still succeed (retry with the same idempotency key).
+After every change Marx saves the state and calls `CommitStorage(GamemodeStorage)`. Commits run one at a time; changes
+that come in meanwhile are committed together in the next one.
+
+- **Wallets** answer as soon as the change is applied and saved, before the commit. The commit runs in the background:
+  a failed one, or one that does not answer within 10 s, keeps the change and is retried a few times, then left to the
+  next commit of that wallet or the next game save. A server crash before the commit loses the change.
+- **Stashes** answer after the commit. A failed commit restores the previous state; a commit that does not answer
+  within 10 s reports `STORAGE_ERROR` without restoring, because it may still succeed.
 
 Data is stored per mission: `profile/.save/<app>_<user>/game/<mission>/gamemode/<collection>/<id>.bin`.
 

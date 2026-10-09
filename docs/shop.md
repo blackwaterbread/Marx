@@ -52,7 +52,10 @@ items, see [Script API](#script-api).
   give the item back.
 - Issued items (handed out for free, `MRX_IssuedItems`, e.g. a respawn kit) are not bought back (`ISSUED`); inside an
   item sold with its contents they count 0.
-- One request per player at a time; requests closer than 250 ms are refused with `BUSY`.
+- A player's requests run one at a time, in the order they came in. Up to 10 wait behind the running one
+  (`MRX_ShopService.MAX_WAITING_REQUESTS`); further ones are refused with `BUSY`.
+- A payment that fails with `STORAGE_ERROR` (outcome unknown) is sent once more with the same idempotency key; a
+  `DUPLICATE` answer counts as paid.
 
 Ledger source: `marx_shop`. Status codes: `MRX_EShopStatus`.
 

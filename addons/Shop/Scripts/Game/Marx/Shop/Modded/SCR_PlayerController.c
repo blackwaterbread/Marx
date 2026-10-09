@@ -9,9 +9,6 @@ typedef func MRX_ClientShopStatesDelegate;
 //! Shop requests: the client sends IDs only, the server resolves prices and items from the shop's catalog.
 modded class SCR_PlayerController
 {
-	protected static const int MRX_SHOP_REQUEST_INTERVAL_MS = 250;
-
-	protected int m_iMRX_LastShopRequestTick;
 	protected ref ScriptInvokerBase<MRX_ClientShopResultDelegate> m_MRX_OnShopResult;
 	protected ref ScriptInvokerBase<MRX_ClientShopStatesDelegate> m_MRX_OnShopStates;
 
@@ -148,12 +145,10 @@ modded class SCR_PlayerController
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Server: rate limit, shop lookup and distance check shared by buy and sell requests.
+	//! Server: shop lookup and distance check shared by buy and sell requests. The shop service limits how many requests
+	//! of a player may wait.
 	protected MRX_EShopStatus MRX_ResolveShopRequest(RplId shopId, out MRX_ShopDefinition shop)
 	{
-		if (!MRX_CheckShopRequestRate())
-			return MRX_EShopStatus.BUSY;
-
 		if (!MRX_Shop.GetService())
 			return MRX_EShopStatus.UNKNOWN_SHOP;
 
@@ -173,18 +168,6 @@ modded class SCR_PlayerController
 			return MRX_EShopStatus.UNKNOWN_SHOP;
 
 		return MRX_EShopStatus.OK;
-	}
-
-	//------------------------------------------------------------------------------------------------
-	//! Server: false when the previous shop request of this player came too shortly before.
-	protected bool MRX_CheckShopRequestRate()
-	{
-		int now = System.GetTickCount();
-		if (m_iMRX_LastShopRequestTick != 0 && now - m_iMRX_LastShopRequestTick < MRX_SHOP_REQUEST_INTERVAL_MS)
-			return false;
-
-		m_iMRX_LastShopRequestTick = now;
-		return true;
 	}
 
 	//------------------------------------------------------------------------------------------------

@@ -23,7 +23,7 @@ enum MRX_EShopStatus
 	PAYMENT_FAILED,
 	//! The item could not be given after payment; the payment was refunded.
 	DELIVERY_FAILED,
-	//! Another request of the same player is still running.
+	//! Too many requests of the same player are waiting (MRX_ShopService.MAX_WAITING_REQUESTS).
 	BUSY,
 	//! The item was handed out for free (MRX_IssuedItems) and is not bought back.
 	ISSUED,

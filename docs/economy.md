@@ -68,8 +68,8 @@ or subclass the callback and override `OnResult`. One callback object can be reu
 `LIMIT_EXCEEDED`, `OWNER_NOT_READY` (empty owner), `INVALID_OWNER` (e.g. transfer to self), `INVALID_CONTEXT`
 (missing source or key), `REJECTED` (by a validator), `STORAGE_ERROR`, `BUSY`.
 
-A `STORAGE_ERROR` after a commit timeout may still have been committed. Retry with the same context: the retry
-returns `DUPLICATE` if the first call went through.
+A `STORAGE_ERROR` may mean that the outcome is unknown (the change may still have been applied). Retry with the same
+context: the retry returns `DUPLICATE` if the first call went through. The shop does this once for its payments.
 
 ## Events and extension points
 

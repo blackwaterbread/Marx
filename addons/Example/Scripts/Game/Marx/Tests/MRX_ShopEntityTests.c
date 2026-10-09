@@ -19,7 +19,7 @@ class MRX_Test_ShopEntityFlow : MRX_TestCase
 	static const ResourceName SHOP_PREFAB = "{10C12BB88B37C571}Prefabs/Marx/Shop/MRX_ShopTable.et";
 	static const string ITEM_ID = "field_dressing";
 	protected static const int SAMPLE_ITEM_COUNT = 7;
-	//! Longer than the controller's request interval.
+	//! Gap between the test's requests.
 	protected static const int REQUEST_GAP_MS = 400;
 
 	protected IEntity m_ShopEntity;

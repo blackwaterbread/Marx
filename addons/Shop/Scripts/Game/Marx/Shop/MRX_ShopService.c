@@ -1,8 +1,10 @@
 //! Server-side buying and selling (API v0). Prices and items always come from the shop's catalog.
-//! A player can have one request running at a time (others get BUSY). Callbacks run on a later frame.
+//! The requests of a player run one at a time, in the order they came in; up to MAX_WAITING_REQUESTS wait behind the
+//! running one, further ones get BUSY. Callbacks run on a later frame.
 class MRX_ShopService : Managed
 {
 	static const string LEDGER_SOURCE = "marx_shop";
+	static const int MAX_WAITING_REQUESTS = 10;
 
 	protected ref MRX_EconomyService m_Economy;
 	protected ref MRX_IdentityService m_Identity;
@@ -10,7 +12,9 @@ class MRX_ShopService : Managed
 	protected ref MRX_CallQueue m_CallQueue = new MRX_CallQueue();
 	protected ref array<ref MRX_ShopValidator> m_aValidators = {};
 	protected ref array<ref MRX_ShopOp> m_aOps = {};
+	//! Players with a running request, or whose next waiting request is about to start.
 	protected ref set<int> m_aBusyPlayerIds = new set<int>();
+	protected ref map<int, ref array<ref MRX_ShopOp>> m_mWaitingOps = new map<int, ref array<ref MRX_ShopOp>>();
 
 	protected ref ScriptInvokerBase<MRX_ShopTradeDelegate> m_OnPurchase;
 	protected ref ScriptInvokerBase<MRX_ShopTradeDelegate> m_OnSale;
@@ -169,7 +173,7 @@ class MRX_ShopService : Managed
 	void OnOpFinished(notnull MRX_ShopOp op, notnull MRX_ShopResult result, MRX_ShopItem item, bool buying, bool releasePlayer = true)
 	{
 		if (releasePlayer)
-			m_aBusyPlayerIds.RemoveItem(op.GetPlayerId());
+			ReleasePlayer(op.GetPlayerId());
 
 		if (result.m_eStatus == MRX_EShopStatus.OK && item)
 		{
@@ -186,6 +190,23 @@ class MRX_ShopService : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! Internal, called by MRX_ShopNextOp: starts the next waiting request of the player.
+	void RunNextOp(int playerId)
+	{
+		array<ref MRX_ShopOp> waiting = m_mWaitingOps.Get(playerId);
+		if (!waiting || waiting.IsEmpty())
+		{
+			m_aBusyPlayerIds.RemoveItem(playerId);
+			return;
+		}
+
+		// m_aOps keeps the op.
+		MRX_ShopOp op = waiting[0];
+		waiting.RemoveOrdered(0);
+		RunOp(op);
+	}
+
+	//------------------------------------------------------------------------------------------------
 	protected void StartOp(notnull MRX_ShopOp op)
 	{
 		for (int i = m_aOps.Count() - 1; i >= 0; i--)
@@ -197,12 +218,33 @@ class MRX_ShopService : Managed
 		m_aOps.Insert(op);
 
 		int playerId = op.GetPlayerId();
-		if (m_aBusyPlayerIds.Contains(playerId))
+		if (!m_aBusyPlayerIds.Contains(playerId))
+		{
+			RunOp(op);
+			return;
+		}
+
+		array<ref MRX_ShopOp> waiting = m_mWaitingOps.Get(playerId);
+		if (!waiting)
+		{
+			waiting = {};
+			m_mWaitingOps.Insert(playerId, waiting);
+		}
+
+		if (waiting.Count() >= MAX_WAITING_REQUESTS)
 		{
 			op.FinishEarly(MRX_EShopStatus.BUSY, false);
 			return;
 		}
 
+		waiting.Insert(op);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void RunOp(notnull MRX_ShopOp op)
+	{
+		int playerId = op.GetPlayerId();
+		m_aBusyPlayerIds.Insert(playerId);
 		if (!op.GetShop())
 		{
 			op.FinishEarly(MRX_EShopStatus.UNKNOWN_SHOP, true);
@@ -216,8 +258,46 @@ class MRX_ShopService : Managed
 			return;
 		}
 
-		m_aBusyPlayerIds.Insert(playerId);
 		op.Start(ownerId);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! The player's running request finished: the next waiting one starts on a later frame. Until then the player stays
+	//! busy, so new requests wait behind it.
+	protected void ReleasePlayer(int playerId)
+	{
+		array<ref MRX_ShopOp> waiting = m_mWaitingOps.Get(playerId);
+		if (waiting && !waiting.IsEmpty())
+		{
+			m_CallQueue.Post(new MRX_ShopNextOp(this, playerId));
+			return;
+		}
+
+		m_aBusyPlayerIds.RemoveItem(playerId);
+		m_mWaitingOps.Remove(playerId);
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Starts the next waiting request of a player. Internal.
+class MRX_ShopNextOp : MRX_DeferredCall
+{
+	//! Weak, the service owns the call queue.
+	protected MRX_ShopService m_Service;
+	protected int m_iPlayerId;
+
+	//------------------------------------------------------------------------------------------------
+	void MRX_ShopNextOp(MRX_ShopService service, int playerId)
+	{
+		m_Service = service;
+		m_iPlayerId = playerId;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void Run()
+	{
+		if (m_Service)
+			m_Service.RunNextOp(m_iPlayerId);
 	}
 }
 
@@ -233,6 +313,7 @@ class MRX_ShopOp : Managed
 	protected ref MRX_ShopCallback m_Callback;
 	protected ref MRX_ShopResult m_Result;
 	protected bool m_bDone;
+	protected bool m_bPaymentRetried;
 
 	//------------------------------------------------------------------------------------------------
 	void Start(string ownerId)
@@ -294,6 +375,19 @@ class MRX_ShopOp : Managed
 	{
 		string reason = string.Format("%1:%2:%3", action, m_Shop.m_sShopId, itemId);
 		return MRX_TxContext.Create(MRX_ShopService.LEDGER_SOURCE, reason, keyPrefix + ":" + m_Result.m_sRequestId);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! True once for a payment whose outcome is unknown (STORAGE_ERROR, e.g. a commit that did not answer): the caller
+	//! sends it again with the same idempotency key, which applies it at most once and answers DUPLICATE when the first
+	//! one went through.
+	protected bool ShouldRetryPayment(notnull MRX_TxResult result)
+	{
+		if (result.m_eStatus != MRX_ETxStatus.STORAGE_ERROR || m_bPaymentRetried)
+			return false;
+
+		m_bPaymentRetried = true;
+		return true;
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -389,8 +483,20 @@ class MRX_ShopBuyOp : MRX_ShopOp
 	//------------------------------------------------------------------------------------------------
 	protected void OnPaid(MRX_TxResult result)
 	{
-		if (result.m_eStatus != MRX_ETxStatus.OK)
+		if (ShouldRetryPayment(result))
 		{
+			Pay();
+			return;
+		}
+
+		if (!result.IsCommitted())
+		{
+			if (result.m_eStatus == MRX_ETxStatus.STORAGE_ERROR)
+			{
+				Print(string.Format("[MRX] Payment of shop request %1 failed twice (STORAGE_ERROR), outcome unknown: owner %2 may have paid %3 %4 for '%5' without getting it",
+					m_Result.m_sRequestId, m_sOwnerId, m_Item.m_iPrice, m_Item.m_sCurrency, m_Item.m_sId), LogLevel.ERROR);
+			}
+
 			m_Result.m_eTxStatus = result.m_eStatus;
 			Finish(MRX_EShopStatus.PAYMENT_FAILED, null, true);
 			return;
@@ -537,6 +643,12 @@ class MRX_ShopSellOp : MRX_ShopOp
 			return;
 		}
 
+		Pay();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void Pay()
+	{
 		MRX_TxCallback callback = new MRX_TxCallback();
 		callback.GetOnResult().Insert(OnPaid);
 		m_Service.GetEconomy().Credit(m_sOwnerId, m_Item.m_sCurrency, m_Result.m_iPrice, CreateContext("sell", m_Item.m_sId, "sell"), callback);
@@ -545,7 +657,13 @@ class MRX_ShopSellOp : MRX_ShopOp
 	//------------------------------------------------------------------------------------------------
 	protected void OnPaid(MRX_TxResult result)
 	{
-		if (result.m_eStatus == MRX_ETxStatus.OK)
+		if (ShouldRetryPayment(result))
+		{
+			Pay();
+			return;
+		}
+
+		if (result.IsCommitted())
 		{
 			Finish(MRX_EShopStatus.OK, m_Item, false);
 			return;

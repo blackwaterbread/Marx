@@ -1,6 +1,7 @@
 //! Wallets and stashes as per-owner scripted states in the "MarxWallets" and "MarxStashes" collections, committed with
 //! CommitStorage(GamemodeStorage) after every change. Needs a persistence config with those collections and the Marx
 //! state serializers (Marx_Core ships reference configs). Without them, the backend falls back to in-memory storage.
+//! Wallet changes answer before their commit, stash changes after it.
 class MRX_NativeBackend : MRX_StorageBackend
 {
 	//! Save data names allow only letters, digits, hyphen and dot (no underscore).
@@ -13,6 +14,8 @@ class MRX_NativeBackend : MRX_StorageBackend
 	protected static const int COMMIT_TIMEOUT_MS = 10000;
 	//! How long a commit may still answer after a game save wrote its changes (then it never does).
 	protected static const int COMMIT_AFTER_SAVE_MS = 2000;
+	//! Delay before a failed background commit is tried again.
+	protected static const int COMMIT_RETRY_MS = 5000;
 
 	protected ref MRX_StorageRules m_Rules;
 	protected ref MRX_StatusCallback m_InitCallback;
@@ -28,6 +31,8 @@ class MRX_NativeBackend : MRX_StorageBackend
 
 	protected ref array<ref MRX_NativeOp> m_aCommitQueue = {};
 	protected ref array<ref MRX_NativeOp> m_aCommitting = {};
+	//! Ops whose background commit failed, waiting to be committed again.
+	protected ref array<ref MRX_NativeOp> m_aRetryQueue = {};
 	//! Identifies the commit in flight in its answer (the callback's context).
 	protected ref MRX_NativeCommitId m_CommitId;
 	protected ref PersistenceStatusCallback m_CommitCallback;
@@ -46,6 +51,9 @@ class MRX_NativeBackend : MRX_StorageBackend
 		SCR_PersistenceSystem persistence = SCR_PersistenceSystem.GetScriptedInstance();
 		if (persistence)
 			persistence.GetOnAfterSave().Remove(OnGameSaved);
+
+		if (GetGame())
+			GetGame().GetCallqueue().Remove(RetryCommits);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -283,6 +291,16 @@ class MRX_NativeBackend : MRX_StorageBackend
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! Internal: commits the op again after a delay, batched with other failed ops. The op stages its states again
+	//! first (MRX_NativeOp.StageAgain()).
+	void RequestCommitRetry(notnull MRX_NativeOp op)
+	{
+		m_aRetryQueue.Insert(op);
+		if (m_aRetryQueue.Count() == 1)
+			GetGame().GetCallqueue().CallLater(RetryCommits, COMMIT_RETRY_MS);
+	}
+
+	//------------------------------------------------------------------------------------------------
 	protected void StartOp(notnull MRX_NativeOp op)
 	{
 		// Finished ops are released here, never from inside their own callbacks.
@@ -381,6 +399,18 @@ class MRX_NativeBackend : MRX_StorageBackend
 
 		if (!m_aCommitQueue.IsEmpty())
 			StartCommit();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void RetryCommits()
+	{
+		array<ref MRX_NativeOp> retries = m_aRetryQueue;
+		m_aRetryQueue = {};
+		foreach (MRX_NativeOp op : retries)
+		{
+			op.StageAgain();
+			RequestCommit(op);
+		}
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -598,6 +628,13 @@ class MRX_NativeOp : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! Ops that requested a commit retry: saves their states again before the retry, in case the failed commit dropped
+	//! them.
+	void StageAgain()
+	{
+	}
+
+	//------------------------------------------------------------------------------------------------
 	protected void LoadNextOwner()
 	{
 		if (m_iNextOwner >= m_aOwnerIds.Count())
@@ -688,15 +725,19 @@ class MRX_NativeHistoryOp : MRX_NativeOp
 }
 
 //------------------------------------------------------------------------------------------------
-//! Applies a transaction to the loaded wallets, saves them and waits for the storage commit.
-//! Commit failure: the wallets are restored and saved again. Commit timeout: nothing is restored,
-//! because the commit may still succeed; a retry with the same idempotency key then returns DUPLICATE.
+//! Applies a transaction to the loaded wallets, saves them and answers right away; the storage commit runs in the
+//! background, batched with other changes. A failed or unanswered commit keeps the change and is retried a few times;
+//! after that, the next commit of the wallet or the next game save writes it. A server crash before the commit loses
+//! the change.
 class MRX_NativeApplyOp : MRX_NativeOp
 {
+	protected static const int MAX_COMMIT_RETRIES = 3;
+
 	protected ref MRX_TxRequest m_Request;
 	protected ref MRX_TxCallback m_Callback;
 	protected ref MRX_TxResult m_Result;
 	protected ref map<string, ref MRX_WalletRecord> m_mSnapshots = new map<string, ref MRX_WalletRecord>();
+	protected int m_iCommitRetries;
 
 	//------------------------------------------------------------------------------------------------
 	void MRX_NativeApplyOp(MRX_NativeBackend backend, MRX_TxRequest request, MRX_TxCallback callback)
@@ -738,21 +779,37 @@ class MRX_NativeApplyOp : MRX_NativeOp
 			}
 		}
 
+		Finish();
 		m_Backend.RequestCommit(this);
 	}
 
 	//------------------------------------------------------------------------------------------------
 	override void OnCommitFinished(bool success, bool timedOut)
 	{
-		if (!success)
-		{
-			if (!timedOut)
-				RestoreSnapshots();
+		if (success)
+			return;
 
-			m_Result = MRX_TxResult.Create(MRX_ETxStatus.STORAGE_ERROR, m_Request.m_sTxId);
+		if (m_iCommitRetries >= MAX_COMMIT_RETRIES)
+		{
+			Print(string.Format("[MRX] Transaction %1 is still not committed after %2 retries. It stays in memory until the next commit of its wallets or the next game save.",
+				m_Request.m_sTxId, MAX_COMMIT_RETRIES), LogLevel.ERROR);
+			return;
 		}
 
-		Finish();
+		m_iCommitRetries++;
+		m_Backend.RequestCommitRetry(this);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override void StageAgain()
+	{
+		PersistenceSystem persistence = PersistenceSystem.GetInstance();
+		foreach (string ownerId : m_aOwnerIds)
+		{
+			MRX_NativeWallet wallet = m_Backend.GetLoadedWallet(ownerId);
+			if (wallet)
+				persistence.Save(wallet.m_State);
+		}
 	}
 
 	//------------------------------------------------------------------------------------------------
