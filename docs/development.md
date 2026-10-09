@@ -57,9 +57,9 @@ Every result is logged as `[MRX_DBG] <action ID> <STATUS> <text>`. Server parts 
 |---|---|---|
 | `marx.info` | | player, owner ID, identity, storage backend, economy state |
 | `marx.char` | player | gives a player without a character (e.g. a PeerTool client in Game Master) one next to you |
-| `marx.item` | prefab, count=1 | spawns items into your inventory |
+| `marx.item` | prefab=(compass), count=1 | spawns items into your inventory |
 | `marx.inv`, `marx.close`, `marx.pause` | | opens the inventory, closes the menus, opens the pause menu |
-| `marx.equip`, `marx.view`, `marx.kill` | | takes the first weapon in hand, switches 1st/3rd person, kills your character |
+| `marx.equip`, `marx.view`, `marx.kill` | | takes a weapon in hand (long guns first), switches 1st/3rd person, kills your character |
 | `marx.hands`, `marx.gear` | | what you hold, what you carry (issued items, magazine rounds), as the server sees it |
 | `wallet.give`, `wallet.take` | amount, currency=default, player=me | changes a balance through the ledger (source `marx_debug`) |
 | `wallet.history` | count=10, currency=default | your latest ledger entries (`all` for every currency) |

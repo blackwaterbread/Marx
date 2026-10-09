@@ -204,12 +204,13 @@ class MRX_DebugMarxChar : MRX_DebugAction
 class MRX_DebugMarxItem : MRX_DebugAction
 {
 	protected static const int MAX_COUNT = 50;
+	protected static const string DEFAULT_PREFAB = "{61D4F80E49BF9B12}Prefabs/Items/Equipment/Compass/Compass_SY183.et";
 
 	//------------------------------------------------------------------------------------------------
 	void MRX_DebugMarxItem()
 	{
 		Setup("marx.item", "Marx", "Give item");
-		AddArg("prefab");
+		AddArg("prefab", DEFAULT_PREFAB);
 		AddArg("count", "1", true);
 	}
 
@@ -340,7 +341,7 @@ class MRX_DebugMarxPause : MRX_DebugAction
 }
 
 //------------------------------------------------------------------------------------------------
-//! Takes the first weapon (primary first) in hand. On the owning client, which drives the character.
+//! Takes a weapon in hand, long guns before handguns and grenades. On the owning client, which drives the character.
 class MRX_DebugMarxEquip : MRX_DebugAction
 {
 	//------------------------------------------------------------------------------------------------
@@ -366,6 +367,9 @@ class MRX_DebugMarxEquip : MRX_DebugAction
 		if (!weaponManager)
 			return MRX_DebugResult.Failed("The character has no weapon manager");
 
+		// The slots are not in a useful order (a grenade can come before the rifle): rank the weapons by type.
+		IEntity best;
+		int bestRank = int.MAX;
 		array<WeaponSlotComponent> slots = {};
 		weaponManager.GetWeaponsSlots(slots);
 		foreach (WeaponSlotComponent slot : slots)
@@ -374,11 +378,37 @@ class MRX_DebugMarxEquip : MRX_DebugAction
 			if (!weapon)
 				continue;
 
-			character.GetCharacterController().TryEquipRightHandItem(weapon, EEquipItemType.EEquipTypeWeapon, false);
-			return MRX_DebugResult.Ok(MRX_DebugActionUtils.GetPrefabFileName(weapon));
+			int rank = GetRank(weapon);
+			if (rank < bestRank)
+			{
+				best = weapon;
+				bestRank = rank;
+			}
 		}
 
-		return MRX_DebugResult.Failed("No weapon");
+		if (!best)
+			return MRX_DebugResult.Failed("No weapon");
+
+		character.GetCharacterController().TryEquipRightHandItem(best, EEquipItemType.EEquipTypeWeapon, false);
+		return MRX_DebugResult.Ok(MRX_DebugActionUtils.GetPrefabFileName(best));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! 0 for long guns and launchers, 1 for handguns, 2 for grenades and unknown weapons.
+	protected static int GetRank(notnull IEntity weapon)
+	{
+		BaseWeaponComponent component = BaseWeaponComponent.Cast(weapon.FindComponent(BaseWeaponComponent));
+		if (!component)
+			return 2;
+
+		EWeaponType type = component.GetWeaponType();
+		if (type == EWeaponType.WT_HANDGUN)
+			return 1;
+
+		if (type == EWeaponType.WT_FRAGGRENADE || type == EWeaponType.WT_SMOKEGRENADE || type == EWeaponType.WT_NONE)
+			return 2;
+
+		return 0;
 	}
 }
 
