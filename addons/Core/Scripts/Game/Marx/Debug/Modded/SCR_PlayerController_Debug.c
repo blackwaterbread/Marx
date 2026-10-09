@@ -33,10 +33,11 @@ modded class SCR_PlayerController
 			return;
 		}
 
-		if (!values)
-			values = {};
+		array<string> received = {};
+		if (values)
+			received.Copy(values);
 
-		MRX_DebugRunner.Execute(MRX_DebugRegistry.Get(), GetPlayerId(), actionId, values, new MRX_DebugRpcReply(this, requestId, actionId));
+		MRX_DebugRunner.Execute(MRX_DebugRegistry.Get(), GetPlayerId(), actionId, received, new MRX_DebugRpcReply(this, requestId, actionId));
 	}
 
 	//------------------------------------------------------------------------------------------------
