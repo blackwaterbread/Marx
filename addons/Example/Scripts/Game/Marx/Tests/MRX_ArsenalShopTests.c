@@ -9,7 +9,183 @@ class MRX_ArsenalShopTests
 	static void Register(notnull MRX_TestRunner runner)
 	{
 		runner.Add(new MRX_Test_ArsenalShopFlow());
+		runner.Add(new MRX_Test_ArsenalOccupiedStorage());
 		runner.Add(new MRX_Test_ShopContentsCheck());
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+//! Two bandages bought into a clothing storage that already holds a tourniquet: every item keeps its own slot.
+class MRX_Test_ArsenalOccupiedStorage : MRX_TestCase
+{
+	protected static const ResourceName TOURNIQUET = "{D70216B1B2889129}Prefabs/Items/Medicine/Tourniquet_01/Tourniquet_US_01.et";
+	protected static const int STEP_MS = 500;
+	protected static const int PURCHASES = 2;
+
+	protected ref MRX_TestPossession m_Possession;
+	protected IEntity m_Character;
+	protected IEntity m_Arsenal;
+	protected BaseInventoryStorageComponent m_Storage;
+	protected ref MRX_ShopCallback m_Callback;
+	protected ref array<IEntity> m_aBefore = {};
+	protected string m_sOwnerId;
+	protected int m_iPlayerId;
+	protected int m_iBought;
+
+	//------------------------------------------------------------------------------------------------
+	override int GetTimeoutMs()
+	{
+		return 15000;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	override protected void Run()
+	{
+		m_Possession = MRX_TestPossession.Acquire();
+		if (!m_Possession || !m_Possession.GetCharacter())
+		{
+			Skip("no local character");
+			return;
+		}
+
+		m_Character = m_Possession.GetCharacter();
+		m_iPlayerId = m_Possession.GetController().GetPlayerId();
+		MRX_IdentityService identity = MRX_Marx.GetIdentity();
+		if (identity)
+			m_sOwnerId = identity.GetOwnerId(m_iPlayerId);
+
+		if (m_sOwnerId.IsEmpty() || !MRX_Shop.GetService())
+		{
+			Skip("no owner or shop service");
+			End(false);
+			return;
+		}
+
+		m_Arsenal = MRX_TestWorldUtils.SpawnPrefab(MRX_Test_ArsenalShopFlow.ARSENAL_PREFAB, m_Character.GetOrigin() + "1.5 0 0");
+		MRX_ShopComponent shopComponent;
+		if (m_Arsenal)
+			shopComponent = MRX_ShopComponent.Cast(m_Arsenal.FindComponent(MRX_ShopComponent));
+
+		if (!shopComponent)
+		{
+			Check(false, "arsenal prefab spawns with a shop");
+			End(true);
+			return;
+		}
+
+		MRX_ShopCatalog catalog = new MRX_ShopCatalog();
+		catalog.m_aItems = {};
+		catalog.m_aItems.Insert(MRX_ShopItem.Create("bandage", MRX_Test_ArsenalShopFlow.BANDAGE, 10, MRX_Settings.DEFAULT_CURRENCY));
+		shopComponent.SetDefinition(MRX_ShopDefinition.Create("test_occupied", catalog, 50));
+
+		InventoryStorageManagerComponent manager = GetManager();
+		m_Storage = manager.FindStorageForResource(TOURNIQUET);
+		if (!m_Storage)
+		{
+			Check(false, "character has room for a tourniquet");
+			End(true);
+			return;
+		}
+
+		manager.TrySpawnPrefabToStorage(TOURNIQUET, m_Storage);
+		m_Callback = new MRX_ShopCallback();
+		m_Callback.GetOnResult().Insert(OnResult);
+		MRX_TxCallback funded = new MRX_TxCallback();
+		funded.GetOnResult().Insert(OnFunded);
+		MRX_Marx.GetEconomy().Credit(m_sOwnerId, MRX_Settings.DEFAULT_CURRENCY, 100, MRX_TxContext.Create("test", "occupied storage", MRX_NetworkTests.UniqueKey("occupied")), funded);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnFunded(MRX_TxResult result)
+	{
+		CheckStatus(result.m_eStatus, MRX_ETxStatus.OK, "fund the buyer");
+		GetGame().GetCallqueue().CallLater(BuyFirst, STEP_MS);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void BuyFirst()
+	{
+		m_Storage.GetAll(m_aBefore, false);
+		Check(m_aBefore.Count() > 0, "storage holds an item before the purchase");
+		Buy();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void Buy()
+	{
+		MRX_EShopStatus status = MRX_ArsenalRequests.Buy(m_iPlayerId, m_Arsenal, m_Storage, "bandage", m_Callback);
+		if (status != MRX_EShopStatus.OK)
+		{
+			Check(false, "purchase request accepted, got " + typename.EnumToString(MRX_EShopStatus, status));
+			End(true);
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void OnResult(MRX_ShopResult result)
+	{
+		if (result.m_eStatus != MRX_EShopStatus.OK)
+		{
+			Check(false, "purchase: expected OK, got " + typename.EnumToString(MRX_EShopStatus, result.m_eStatus));
+			End(true);
+			return;
+		}
+
+		m_iBought++;
+		if (m_iBought < PURCHASES)
+		{
+			GetGame().GetCallqueue().CallLater(Buy, STEP_MS);
+			return;
+		}
+
+		GetGame().GetCallqueue().CallLater(CheckStorage, STEP_MS);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void CheckStorage()
+	{
+		array<IEntity> after = {};
+		m_Storage.GetAll(after, false);
+		CheckInt(after.Count(), m_aBefore.Count() + PURCHASES, "storage holds the old items and the bought ones");
+		foreach (IEntity item : m_aBefore)
+		{
+			// Spawning into an occupied slot deletes its item.
+			Check(item && m_Storage.Contains(item), "item stays in the storage");
+		}
+
+		set<int> slotIds = new set<int>();
+		foreach (IEntity item : after)
+		{
+			InventoryStorageSlot slot = m_Storage.FindItemSlot(item);
+			int slotId = -1;
+			if (slot)
+				slotId = slot.GetID();
+
+			Print(string.Format("[MRX_TEST]   slot %1: %2", slotId, SCR_ResourceNameUtils.GetPrefabName(item)));
+			Check(slotId >= 0 && !slotIds.Contains(slotId), "every item has a slot of its own");
+			slotIds.Insert(slotId);
+		}
+
+		End(true);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void End(bool finish)
+	{
+		if (m_Arsenal)
+			SCR_EntityHelper.DeleteEntityAndChildren(m_Arsenal);
+
+		if (m_Possession)
+			m_Possession.Release();
+
+		if (finish)
+			Finish();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected InventoryStorageManagerComponent GetManager()
+	{
+		return InventoryStorageManagerComponent.Cast(m_Character.FindComponent(SCR_InventoryStorageManagerComponent));
 	}
 }
 

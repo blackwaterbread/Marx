@@ -57,13 +57,15 @@ class MRX_EntityShopInventory : MRX_ShopInventory
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! First slot of the storage that takes the prefab, or -1. A weapon's attachment slots take one kind of item each.
+	//! First empty slot of the storage that takes the prefab, or -1 (the engine picks the place). A weapon's attachment
+	//! slots take one kind of item each. Occupied slots are skipped: spawning into one deletes its item, and clothing
+	//! storages have one occupied slot per item.
 	protected static int FindSlot(notnull InventoryStorageManagerComponent manager, ResourceName prefab, notnull BaseInventoryStorageComponent storage)
 	{
 		int count = storage.GetSlotsCount();
 		for (int i = 0; i < count; i++)
 		{
-			if (manager.CanInsertResourceInStorage(prefab, storage, i))
+			if (!storage.Get(i) && manager.CanInsertResourceInStorage(prefab, storage, i))
 				return i;
 		}
 
