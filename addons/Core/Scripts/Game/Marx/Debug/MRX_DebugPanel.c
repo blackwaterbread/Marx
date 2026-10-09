@@ -32,10 +32,27 @@ class MRX_DebugPanel : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
+	static bool IsShown()
+	{
+		return DiagMenu.GetBool(SCR_DebugMenuID.MRX_DEBUGUI_PANEL);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Shows or hides the panel, as its diag menu entry does (also the pause menu button, see PauseMenuUI).
+	static void SetShown(bool shown)
+	{
+		int value;
+		if (shown)
+			value = 1;
+
+		DiagMenu.SetValue(SCR_DebugMenuID.MRX_DEBUGUI_PANEL, value);
+	}
+
+	//------------------------------------------------------------------------------------------------
 	//! Every frame: draws the panel while its diag menu entry is on.
 	static void Update()
 	{
-		if (!DiagMenu.GetBool(SCR_DebugMenuID.MRX_DEBUGUI_PANEL))
+		if (!IsShown())
 			return;
 
 		if (!s_Instance)
@@ -54,6 +71,8 @@ class MRX_DebugPanel : Managed
 			m_sPage = pages[0];
 
 		DbgUI.Begin(TITLE, 20, 120);
+		bool hide = DbgUI.Button("Hide");
+		DbgUI.SameLine();
 		DrawPages(pages);
 		DbgUI.Spacer(4);
 		DrawState(registry);
@@ -62,6 +81,8 @@ class MRX_DebugPanel : Managed
 		DbgUI.Spacer(4);
 		DrawResults();
 		DbgUI.End();
+		if (hide)
+			SetShown(false);
 	}
 
 	//------------------------------------------------------------------------------------------------
