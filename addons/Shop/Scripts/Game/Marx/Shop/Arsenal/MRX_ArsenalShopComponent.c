@@ -13,11 +13,23 @@ class MRX_ArsenalShopComponent : ScriptComponent
 	protected static const int PRELOAD_CHECK_MS = 1000;
 	protected static const int PRELOAD_PER_FRAME = 4;
 
+	[Attribute("1", desc: "Purchases and sales go into a cart in the middle of the inventory and are paid together at checkout. Off: each one happens right away.")]
+	protected bool m_bUseCart;
+
+	[Attribute("8", UIWidgets.EditBox, "Columns of the cart and of the sale box (with a cart). Each holds one page.", params: "1 12")]
+	protected int m_iCartColumns;
+
+	[Attribute("4", UIWidgets.EditBox, "Rows of the cart and of the sale box (with a cart). Each holds one page; the middle of the inventory shows an opened item of theirs below them.", params: "1 12")]
+	protected int m_iCartRows;
+
 	protected MRX_ShopComponent m_Shop;
 	protected ref array<ref SCR_ArsenalItem> m_aItems;
 	protected ref map<string, MRX_ShopItem> m_mItems;
 	//! Catalog entries of m_aItems, same order.
 	protected ref array<MRX_ShopItem> m_aListed;
+	//! Items the shop buys back, by prefab key, and in catalog order.
+	protected ref map<string, MRX_ShopItem> m_mSellItems;
+	protected ref array<MRX_ShopItem> m_aSellListed;
 	protected ref array<string> m_aCategories;
 	protected ref array<string> m_aCurrencies;
 	protected int m_iPreloadIndex = -1;
@@ -43,6 +55,46 @@ class MRX_ArsenalShopComponent : ScriptComponent
 			return null;
 
 		return Find(resource.GetOwner());
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Purchases go into a cart and sales into a sale box (MRX_ArsenalTradeSession) instead of happening right away.
+	bool UsesCart()
+	{
+		return m_bUseCart;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	int GetCartColumns()
+	{
+		return Math.Max(1, m_iCartColumns);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	int GetCartRows()
+	{
+		return Math.Max(1, m_iCartRows);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Catalog entry of a prefab the shop buys back (also items not for sale), or null.
+	MRX_ShopItem FindSellItem(ResourceName prefab)
+	{
+		BuildSellList();
+		return m_mSellItems.Get(MRX_ShopCatalog.GetPrefabKey(prefab));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Catalog entries the shop buys back, in catalog order (the list of the sale tab). \return Count.
+	int GetSellListItems(notnull array<MRX_ShopItem> outItems)
+	{
+		BuildSellList();
+		foreach (MRX_ShopItem item : m_aSellListed)
+		{
+			outItems.Insert(item);
+		}
+
+		return m_aSellListed.Count();
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -141,11 +193,36 @@ class MRX_ArsenalShopComponent : ScriptComponent
 	}
 
 	//------------------------------------------------------------------------------------------------
+	protected void BuildSellList()
+	{
+		if (m_aSellListed)
+			return;
+
+		m_aSellListed = {};
+		m_mSellItems = new map<string, MRX_ShopItem>();
+		MRX_ShopDefinition shop = GetShop();
+		if (!shop)
+			return;
+
+		foreach (MRX_ShopItem item : shop.m_Catalog.m_aItems)
+		{
+			string key = MRX_ShopCatalog.GetPrefabKey(item.m_sPrefab);
+			if (item.m_Product || shop.GetSellPrice(item) <= 0 || m_mSellItems.Contains(key))
+				continue;
+
+			m_mSellItems.Set(key, item);
+			m_aSellListed.Insert(item);
+		}
+	}
+
+	//------------------------------------------------------------------------------------------------
 	protected void OnDefinitionChanged(MRX_ShopComponent shop)
 	{
 		m_aItems = null;
 		m_mItems = null;
 		m_aListed = null;
+		m_aSellListed = null;
+		m_mSellItems = null;
 		m_aCategories = null;
 		m_aCurrencies = null;
 		SCR_ArsenalComponent arsenal = SCR_ArsenalComponent.Cast(GetOwner().FindComponent(SCR_ArsenalComponent));

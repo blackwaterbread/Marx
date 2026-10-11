@@ -33,6 +33,134 @@ StringTable {
    Author "denev"
    LastChanged "denev"
   }
+  CustomStringTableItem "{6A94F6A02DDB8707}" {
+   Id "MRX-Cart_BalanceAfter"
+   Target_en_us "Balance after checkout"
+   Target_ko_kr "결제 후 잔액"
+   Modified 1788147595
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A94F6A02DDA70E0}" {
+   Id "MRX-Cart_BuyTotal"
+   Target_en_us "Purchase total"
+   Target_ko_kr "구매 합계"
+   Modified 1788147595
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A94F6A02DC1EF23}" {
+   Id "MRX-Cart_Done"
+   Target_en_us "Checkout complete"
+   Target_ko_kr "결제 완료"
+   Modified 1788147595
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A962E927B0B2B37}" {
+   Id "MRX-Cart_Dropped"
+   Target_en_us "No room in your inventory: %1 items were put at your feet."
+   Target_ko_kr "인벤토리에 자리가 없어 %1개를 발밑에 놓았습니다."
+   Modified 1788228312
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A962E927CF55C99}" {
+   Id "MRX-Cart_EmptyBuy"
+   Target_en_us "Drag items here from the arsenal or press X on them to put them into the cart."
+   Target_ko_kr "아스널에서 물건을 끌어다 놓거나 X를 누르면 장바구니에 담깁니다."
+   Modified 1788228312
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A962E927CF5C06B}" {
+   Id "MRX-Cart_EmptySell"
+   Target_en_us "Drag the items you want to sell here or onto the arsenal, or press X on them."
+   Target_ko_kr "팔 물건을 여기나 아스널로 끌어다 놓거나 X를 누르세요."
+   Modified 1788228312
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A962E927B0B9B8D}" {
+   Id "MRX-Cart_Full"
+   Target_en_us "No room for it in the cart."
+   Target_ko_kr "장바구니에 넣을 자리가 없습니다."
+   Modified 1788228312
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A962E927CF46E9D}" {
+   Id "MRX-Cart_HoldBuy"
+   Target_en_us "Hold to buy"
+   Target_ko_kr "구매하려면 길게 누르기"
+   Modified 1788228312
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A962E927CF4D309}" {
+   Id "MRX-Cart_HoldSell"
+   Target_en_us "Hold to sell"
+   Target_ko_kr "판매하려면 길게 누르기"
+   Modified 1788228312
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A962E927B0AA902}" {
+   Id "MRX-Cart_Left"
+   Target_en_us "%1 items did not fit into your inventory and stay in the cart."
+   Target_ko_kr "%1개는 인벤토리에 자리가 없어 장바구니에 남았습니다."
+   Modified 1788228312
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A94F6A02DC740E0}" {
+   Id "MRX-Cart_NoAnswer"
+   Target_en_us "No answer from the server"
+   Target_ko_kr "서버 응답이 없습니다"
+   Modified 1788147595
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A94F6A02DC0CF80}" {
+   Id "MRX-Cart_Paying"
+   Target_en_us "Paying..."
+   Target_ko_kr "결제 중..."
+   Modified 1788147595
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A94F6A02DDAD776}" {
+   Id "MRX-Cart_SellTotal"
+   Target_en_us "Sale total"
+   Target_ko_kr "판매 합계"
+   Modified 1788147595
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A962E927CF705BF}" {
+   Id "MRX-Cart_TabBuy"
+   Target_en_us "Buy"
+   Target_ko_kr "구매"
+   Modified 1788228312
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A962E927CF7E327}" {
+   Id "MRX-Cart_TabSell"
+   Target_en_us "Sell"
+   Target_ko_kr "판매"
+   Modified 1788228312
+   Author "denev"
+   LastChanged "denev"
+  }
+  CustomStringTableItem "{6A94F6A02DC208A6}" {
+   Id "MRX-Cart_Title"
+   Target_en_us "Cart"
+   Target_ko_kr "장바구니"
+   Modified 1788147595
+   Author "denev"
+   LastChanged "denev"
+  }
   CustomStringTableItem "{6A8E48E5A2D5643D}" {
    Id "MRX-Common_Failed"
    Target_en_us "Failed: %1"

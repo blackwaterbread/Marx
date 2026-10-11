@@ -1,25 +1,62 @@
 //! Slots of a Marx arsenal show the Marx price instead of the supply cost and can be taken when the local wallet covers
-//! it. Vanilla rank locks and military supply allocation do not apply.
+//! it (with a trade: the balance after the cart). In the sale tab of a trade they show what the arsenal pays for the
+//! item. Vanilla rank locks and military supply allocation do not apply.
 modded class SCR_ArsenalInventorySlotUI
 {
 	protected static const string MRX_SUPPLY_ICON_WIDGET_NAME = "SuppliesIcon";
 
 	//------------------------------------------------------------------------------------------------
-	//! Catalog entry of this slot when it belongs to a Marx arsenal, or null.
-	MRX_ShopItem MRX_FindShopItem()
+	//! Marx arsenal this slot belongs to, or null.
+	MRX_ArsenalShopComponent MRX_FindArsenal()
 	{
-		if (!m_pItem || !m_pItem.GetOwner() || !GetStorageUI())
+		if (!GetStorageUI())
 			return null;
 
 		BaseInventoryStorageComponent storage = GetStorageUI().GetCurrentNavigationStorage();
 		if (!storage)
 			return null;
 
-		MRX_ArsenalShopComponent arsenal = MRX_ArsenalShopComponent.Find(storage.GetOwner());
+		return MRX_ArsenalShopComponent.Find(storage.GetOwner());
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! The slot lists what the arsenal buys back (sale tab of a trade).
+	bool MRX_IsSaleList()
+	{
+		SCR_InventoryOpenedStorageArsenalUI panel = SCR_InventoryOpenedStorageArsenalUI.Cast(GetStorageUI());
+		return panel && panel.MRX_IsSaleList();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Catalog entry of this slot when it belongs to a Marx arsenal, or null.
+	MRX_ShopItem MRX_FindShopItem()
+	{
+		if (!m_pItem || !m_pItem.GetOwner())
+			return null;
+
+		MRX_ArsenalShopComponent arsenal = MRX_FindArsenal();
 		if (!arsenal)
 			return null;
 
-		return arsenal.FindItem(SCR_ResourceNameUtils.GetPrefabName(m_pItem.GetOwner()));
+		ResourceName prefab = SCR_ResourceNameUtils.GetPrefabName(m_pItem.GetOwner());
+		if (MRX_IsSaleList())
+			return arsenal.FindSellItem(prefab);
+
+		return arsenal.FindItem(prefab);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Purchase price, or in the sale list the price the arsenal pays.
+	protected int MRX_GetShownPrice(notnull MRX_ShopItem item)
+	{
+		if (!MRX_IsSaleList())
+			return item.m_iPrice;
+
+		MRX_ArsenalShopComponent arsenal = MRX_FindArsenal();
+		if (!arsenal || !arsenal.GetShop())
+			return 0;
+
+		return arsenal.GetShop().GetSellPrice(item);
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -29,7 +66,7 @@ modded class SCR_ArsenalInventorySlotUI
 		if (!item)
 			return super.GetTotalResources();
 
-		m_fSupplyCost = item.m_iPrice;
+		m_fSupplyCost = MRX_GetShownPrice(item);
 		return m_fSupplyCost;
 	}
 
@@ -49,14 +86,33 @@ modded class SCR_ArsenalInventorySlotUI
 			icon.SetVisible(false);
 
 		// One cell is too narrow for "$14,500".
+		int price = MRX_GetShownPrice(item);
 		if (m_iSizeX <= 1)
-			m_CostResourceHolderText.SetText(MRX_TextFormat.MoneyCompact(item.m_iPrice, item.m_sCurrency));
+			m_CostResourceHolderText.SetText(MRX_TextFormat.MoneyCompact(price, item.m_sCurrency));
 		else
-			m_CostResourceHolderText.SetText(MRX_TextFormat.Money(item.m_iPrice, item.m_sCurrency));
+			m_CostResourceHolderText.SetText(MRX_TextFormat.Money(price, item.m_sCurrency));
+
+		// The sale list only informs.
+		if (MRX_IsSaleList())
+		{
+			SetItemAvailability(true);
+			return;
+		}
 
 		int balance;
-		MRX_ClientWallet wallet = MRX_ClientWallet.GetLocal();
-		SetItemAvailability(wallet && wallet.TryGetBalance(item.m_sCurrency, balance) && balance >= item.m_iPrice);
+		bool known;
+		MRX_ArsenalTradeClient trade = MRX_ArsenalTradeClient.GetLocal();
+		if (trade && trade.IsTradingAt(MRX_FindArsenal()))
+		{
+			known = trade.GetBalanceAfter(item.m_sCurrency, balance);
+		}
+		else
+		{
+			MRX_ClientWallet wallet = MRX_ClientWallet.GetLocal();
+			known = wallet && wallet.TryGetBalance(item.m_sCurrency, balance);
+		}
+
+		SetItemAvailability(known && balance >= item.m_iPrice);
 	}
 
 	//------------------------------------------------------------------------------------------------

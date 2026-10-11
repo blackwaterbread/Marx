@@ -239,9 +239,10 @@ class MRX_EntityShopInventory : MRX_ShopInventory
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! Adds the prefab of everything the entity holds, recursively, walking storages like MRX_EntitySnapshots.
+	//! Adds the prefab of everything the entity holds, recursively, walking storages like MRX_EntitySnapshots (an empty
+	//! prefab for issued items).
 	//! \return False when one of them must not be sold (not refundable) or is being moved.
-	protected bool CollectContents(notnull IEntity entity, notnull array<ResourceName> outContents)
+	static bool CollectContents(notnull IEntity entity, notnull array<ResourceName> outContents)
 	{
 		set<BaseInventoryStorageComponent> storages = new set<BaseInventoryStorageComponent>();
 		MRX_EntitySnapshots.FindStorages(entity, storages);
@@ -272,7 +273,8 @@ class MRX_EntityShopInventory : MRX_ShopInventory
 	}
 
 	//------------------------------------------------------------------------------------------------
-	protected static bool IsRefundable(notnull InventoryItemComponent item)
+	//! Mission items are not refundable: shops never delete them.
+	static bool IsRefundable(notnull InventoryItemComponent item)
 	{
 		SCR_ItemAttributeCollection attributes = SCR_ItemAttributeCollection.Cast(item.GetAttributes());
 		return !attributes || attributes.IsRefundable();

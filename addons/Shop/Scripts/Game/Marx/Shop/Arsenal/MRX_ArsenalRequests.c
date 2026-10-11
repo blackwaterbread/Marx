@@ -29,6 +29,15 @@ class MRX_ArsenalRequests
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! The same checks as the requests above for a player trading at the arsenal (alive, within reach, may interact).
+	static MRX_EShopStatus CheckPlayer(int playerId, IEntity arsenalEntity)
+	{
+		MRX_ShopDefinition shop;
+		IEntity character;
+		return Resolve(playerId, arsenalEntity, shop, character);
+	}
+
+	//------------------------------------------------------------------------------------------------
 	//! Checks a sale of an item with its contents and starts it. The callback gets the result unless a status other than
 	//! OK is returned.
 	static MRX_EShopStatus Sell(int playerId, IEntity arsenalEntity, IEntity item, MRX_ShopCallback callback)
@@ -81,6 +90,10 @@ class MRX_ArsenalRequests
 	{
 		IEntity owner = storage.GetOwner();
 		if (!owner || SCR_ArsenalComponent.FindArsenalComponent(owner, false))
+			return MRX_EShopStatus.REJECTED;
+
+		// The cart and the sale box of a trade take items through the trade only.
+		if (owner.FindComponent(MRX_ArsenalTradeManagerComponent) || MRX_ArsenalTradeStorageComponent.FindHolder(owner))
 			return MRX_EShopStatus.REJECTED;
 
 		IEntity parent = owner;

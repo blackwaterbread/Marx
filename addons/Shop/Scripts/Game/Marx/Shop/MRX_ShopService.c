@@ -48,6 +48,24 @@ class MRX_ShopService : Managed
 	}
 
 	//------------------------------------------------------------------------------------------------
+	//! Buys the items of a cart at once (see MRX_ShopCart): one payment per currency for every line the validators allow,
+	//! then the lines are moved into the player's inventory; lines that do not fit stay in the cart and are refunded.
+	//! Purchase events are invoked per paid item. The callback gets a MRX_ShopCheckoutResult.
+	void CheckoutBuy(int playerId, MRX_ShopDefinition shop, notnull MRX_ShopCart cart, MRX_ShopCallback callback = null)
+	{
+		StartOp(new MRX_ShopCheckoutBuyOp(this, playerId, shop, cart, callback));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Sells the items of a cart at once (see MRX_ShopCart), each with its contents: lines worth nothing are deleted
+	//! without pay, refused lines go back to the player, the rest are deleted and paid with one payment per currency.
+	//! Sale events are invoked per paid line. The callback gets a MRX_ShopCheckoutResult.
+	void CheckoutSell(int playerId, MRX_ShopDefinition shop, notnull MRX_ShopCart cart, MRX_ShopCallback callback = null)
+	{
+		StartOp(new MRX_ShopCheckoutSellOp(this, playerId, shop, cart, callback));
+	}
+
+	//------------------------------------------------------------------------------------------------
 	//! Price the shop pays for an item and its contents (see Sell() with contents).
 	//! \param[out] unpaidCount Contents worth nothing to the shop.
 	//! \return 0 when the shop does not buy the item itself.

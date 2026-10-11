@@ -1,19 +1,24 @@
-//! Adds the shop service to the Marx system (server).
+//! Adds the shop service and the arsenal trades to the Marx system (server).
 modded class MRX_MarxSystem
 {
 	protected ref MRX_ShopService m_MRX_ShopService;
+	protected ref MRX_ArsenalTradeSessionManager m_MRX_ArsenalTrades;
 
 	//------------------------------------------------------------------------------------------------
 	override event protected void OnInit()
 	{
 		super.OnInit();
 		if (GetEconomy() && GetIdentity())
+		{
 			m_MRX_ShopService = new MRX_ShopService(GetEconomy(), GetIdentity(), new MRX_EntityShopInventory());
+			m_MRX_ArsenalTrades = new MRX_ArsenalTradeSessionManager();
+		}
 	}
 
 	//------------------------------------------------------------------------------------------------
 	override event protected void OnCleanup()
 	{
+		m_MRX_ArsenalTrades = null;
 		m_MRX_ShopService = null;
 		super.OnCleanup();
 	}
@@ -22,6 +27,12 @@ modded class MRX_MarxSystem
 	MRX_ShopService MRX_GetShopService()
 	{
 		return m_MRX_ShopService;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	MRX_ArsenalTradeSessionManager MRX_GetArsenalTrades()
+	{
+		return m_MRX_ArsenalTrades;
 	}
 }
 

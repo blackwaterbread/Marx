@@ -1,0 +1,37 @@
+GenericEntity {
+ ID "6A962E93CC688F90"
+ components {
+  MRX_ArsenalTradeStorageComponent "{6A962E93CC687DFE}" {
+   Attributes SCR_ItemAttributeCollection "{6A962E93CC68B9C2}" {
+    ItemDisplayName UIInfo "{6A962E93CC68A200}" {
+     Name "#MRX-Cart_TabSell"
+    }
+    ItemPhysAttributes ItemPhysicalAttributes "{6A962E93CC6896DE}" {
+    }
+   }
+   UseCapacityCoefficient 0
+   MaxCumulativeVolume 1000000
+   MaxItemSize 300 300 300
+   m_fMaxWeight 2000
+   m_eRole SALE
+  }
+  MRX_ArsenalTradeStorageComponent "{6A962E93CC6BE661}" {
+   Attributes SCR_ItemAttributeCollection "{6A962E93CC682BAB}" {
+    ItemDisplayName UIInfo "{6A962E93CC6817B6}" {
+     Name "#MRX-Cart_Title"
+    }
+    ItemPhysAttributes ItemPhysicalAttributes "{6A962E93CC680C04}" {
+    }
+   }
+   UseCapacityCoefficient 0
+   MaxCumulativeVolume 1000000
+   MaxItemSize 300 300 300
+   m_fMaxWeight 2000
+   m_eRole CART
+  }
+  MRX_ArsenalTradeManagerComponent "{6A962E93CC68816B}" {
+  }
+  RplComponent "{6A962E93CC6BFCF4}" {
+  }
+ }
+}

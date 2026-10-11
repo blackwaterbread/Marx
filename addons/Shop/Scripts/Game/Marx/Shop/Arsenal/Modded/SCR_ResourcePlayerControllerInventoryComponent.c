@@ -1,5 +1,6 @@
 //! Every buy and sell of the vanilla arsenal window ends in these two requests. For a Marx arsenal they become Marx shop
-//! requests (catalog item ID, target storage, item to sell); the vanilla supply requests are refused on the server.
+//! requests (catalog item ID, target storage, item to sell), or for an arsenal with a cart changes of the player's trade
+//! (MRX_ArsenalTradeClient); the vanilla supply requests are refused on the server.
 modded class SCR_ResourcePlayerControllerInventoryComponent
 {
 	//------------------------------------------------------------------------------------------------
@@ -13,6 +14,16 @@ modded class SCR_ResourcePlayerControllerInventoryComponent
 		}
 
 		MRX_ShopItem item = arsenal.FindItem(resourceNameItem);
+		if (arsenal.UsesCart())
+		{
+			MRX_ArsenalTradeClient trade = MRX_ArsenalTradeClient.GetLocal();
+			BaseInventoryStorageComponent storage = BaseInventoryStorageComponent.Cast(Replication.FindItem(storageComponentRplId));
+			if (!trade || !trade.TakeFromArsenal(arsenal, item, storage))
+				SCR_UISoundEntity.SoundEvent(SCR_SoundEvent.SOUND_INV_DROP_ERROR);
+
+			return;
+		}
+
 		SCR_PlayerController controller = SCR_PlayerController.Cast(GetOwner());
 		if (item && controller)
 			controller.MRX_RequestArsenalBuy(arsenal.GetOwner(), storageComponentRplId, item.m_sId);
@@ -25,6 +36,20 @@ modded class SCR_ResourcePlayerControllerInventoryComponent
 		if (!arsenal)
 		{
 			super.RpcAsk_ArsenalRefundItem(resourceComponentRplId, inventoryItemRplId, resourceType);
+			return;
+		}
+
+		if (arsenal.UsesCart())
+		{
+			IEntity item;
+			InventoryItemComponent itemComponent = InventoryItemComponent.Cast(Replication.FindItem(inventoryItemRplId));
+			if (itemComponent)
+				item = itemComponent.GetOwner();
+
+			MRX_ArsenalTradeClient trade = MRX_ArsenalTradeClient.GetLocal();
+			if (!trade || !trade.GiveToArsenal(arsenal, item))
+				SCR_UISoundEntity.SoundEvent(SCR_SoundEvent.SOUND_INV_DROP_ERROR);
+
 			return;
 		}
 

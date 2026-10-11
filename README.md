@@ -27,7 +27,7 @@ stash point; both bring `Marx_UI`, which also shows the balances in the inventor
 - **Shops:** a component that turns any entity into a shop, `.conf` catalogs, purchase into the player's inventory,
   sell-back at a configurable percentage, validators for custom rules. Products sell things that are not items (e.g.
   extra stash pages), and any character can be a shop keeper. A vanilla arsenal can sell a catalog for Marx money in its
-  own inventory window.
+  own inventory window, through a cart paid at once with a sale box.
 - **Stash:** a personal stash that opens as its own panel of the vanilla inventory at stash points (pages of cells;
   every item keeps its cell). Stored items keep their attachments, magazines, contents, damage and fuel. Assets move through `STASHED`, `DEPLOYED`, `LOST` and `CONSUMED`; a loss policy decides what happens on death
   and after a server restart.

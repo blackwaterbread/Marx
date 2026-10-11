@@ -79,9 +79,11 @@ when they need other addons; for example a stash page product calls `MRX_StashPa
 
 ## Arsenal shop
 
-The vanilla arsenal window can sell a Marx catalog for Marx money instead of supplies. Players use it as usual: drag an
-item into a bag, vest or weapon attachment slot, or right-click it to buy; drop an item of their inventory on the arsenal
-(or right-click it, "Deposit") to sell it.
+The vanilla arsenal window can sell a Marx catalog for Marx money instead of supplies. By default it trades through a
+cart (see [Cart](#cart)): items taken from the arsenal go into a cart in the middle of the inventory and are paid at
+once. With `m_bUseCart` off on `MRX_ArsenalShopComponent`, players buy and sell right away as with the vanilla arsenal:
+drag an item into a bag, vest or weapon attachment slot, or right-click it to buy; drop an item of their inventory on
+the arsenal (or right-click it, "Deposit") to sell it.
 
 Setup: on an entity with `SCR_ArsenalComponent` and `SCR_ResourceComponent` (every vanilla arsenal box has both), add
 `MRX_ShopComponent` (shop ID, catalog, sell percentage) and `MRX_ArsenalShopComponent`. Disable saved loadouts on the
@@ -100,9 +102,9 @@ What changes on such an arsenal:
   counts (the choice is kept per shop for the session), and a search field keeps the items whose display name or item
   ID contains every word typed (the inventory's keys are blocked while typing; Enter, Escape or a click elsewhere ends
   it). Mouse and keyboard only.
-- Buying debits the price and spawns the item where the player dropped it (a bag, a vest pouch, a weapon's attachment
-  slot), or into the inventory. Selling buys back the item with everything it holds (attachments, magazines, stored
-  items): the price is the sum of their sell prices. Contents the shop does not buy are removed with it and count 0; the
+- Without a cart, buying debits the price and spawns the item where the player dropped it (a bag, a vest pouch, a
+  weapon's attachment slot), or into the inventory. Selling buys back the item with everything it holds (attachments,
+  magazines, stored items): the price is the sum of their sell prices. Contents the shop does not buy are removed with it and count 0; the
   result message says how many. Items that are not refundable (mission items) are never sold, alone or inside another
   item.
 - The server checks requests like vanilla arsenal requests (an alive character within 30 m that may use the arsenal,
@@ -117,6 +119,33 @@ What changes on such an arsenal:
 Large catalogs take a moment to open the first time: the window creates a preview of every item (about 2 ms each). Marx
 creates them a few per frame while the local player is within 30 m of the arsenal.
 
+### Cart
+
+With a cart, opening the arsenal opens a trade: the server spawns a trade container at the arsenal (no model, not saved,
+`Prefabs/Marx/Shop/MRX_ArsenalTradeContainer.et`) with a cart and a sale box, and the middle of the inventory shows
+them instead of the character, with Buy and Sell tabs, the totals and a button held to pay.
+
+- Buy tab: every way of taking an arsenal item (drag, right-click, X) puts it into the cart as a real item, which the
+  player cannot use or take out before paying. Dropped on a weapon or a bag in the cart, or into its storage opened
+  below the cart, the item goes into it (a weapon takes it into a free attachment slot that fits). Dropped elsewhere,
+  it goes to a free cell. Items of the cart dragged back onto the arsenal (or X) leave the cart.
+- The cart or the sale box stays in view; double click or middle mouse on one of their items opens its storage below
+  it (e.g. a backpack's contents or a weapon's attachments), where items and parts are dragged in and out. Items of the
+  trade are not inspected (I); inspecting a weapon of the player's own takes the middle as without a trade.
+- Prices: an item costs its catalog price; the parts it comes with (e.g. a rifle's magazine) are included and cost
+  nothing in the weapon or in the cart's cells. Put into another weapon of the cart, such a part costs its catalog price
+  (parts the arsenal does not sell cannot go there). Arsenal slots show what the balance after the cart still covers.
+- Checkout of the cart: one payment per currency, then the items go into the player's inventory. Items that do not fit
+  stay in the cart and are refunded.
+- Sell tab: the player's own items dropped on the sale box or on the arsenal (or X) go into the sale box, where each
+  shows its sale price with what it holds (issued items and items the shop does not buy show 0 and are disposed of when
+  sold). The arsenal lists what it buys back meanwhile, items not for sale included. Items dragged out of the sale box
+  go back; X gives them back where they were. Checkout deletes the items and pays the total at once.
+- The cart and the sale box hold one page each (`m_iCartColumns` × `m_iCartRows`, 8 × 4 by default).
+- Closing the inventory, walking away, dying or leaving empties the cart and gives the sale box back (at the character's
+  feet when the inventory is full; the player is told). Mods that save a leaving player's gear call
+  `MRX_ArsenalTrades.Get().Close(playerId, reason)` first, so the items for sale are saved with it.
+
 ## Script API
 
 `MRX_Shop.GetService()` (server) offers `Buy(playerId, shop, itemId, callback, target)` and
@@ -126,7 +155,13 @@ rules (faction, rank, ...). `target` (optional, `MRX_ShopStorageTarget.Create(st
 to; `withContents` sells the item with everything it holds (`GetSellPriceWithContents` computes the price). Inventory
 access sits behind `MRX_ShopInventory`; `MRX_EntityShopInventory` is the engine implementation.
 `MRX_ArsenalRequests.Buy`/`Sell` add the arsenal checks. `MRX_ArsenalShopComponent.GetListedItems(items)` and
-`GetCategories()` return the catalog entries and categories an arsenal lists.
+`GetCategories()` return the catalog entries and categories an arsenal lists, `GetSellListItems(items)` what it buys
+back.
+
+`CheckoutBuy(playerId, shop, cart, callback)` and `CheckoutSell(...)` trade the items of a `MRX_ShopCart` at once (one
+payment per currency, validators and events per item; the callback gets a `MRX_ShopCheckoutResult` with the amounts and
+the counts of delivered and left items). The arsenal trade (`MRX_ArsenalTradeSession`, server; `MRX_ArsenalTrades.Get()`)
+is such a cart.
 
 `MRX_ShopComponent.SetDefinition(definition)` replaces a shop's catalog and settings at runtime (call it with the same
 definition on the server and every client).

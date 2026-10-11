@@ -1,4 +1,5 @@
-// Development tool: creates the sample assets (Marx_Shop: shop catalog, shop table and arsenal box, Marx_Stash: stash wardrobe).
+// Development tool: creates the sample assets (Marx_Shop: shop catalog, shop table, arsenal box and arsenal trade container,
+// Marx_Stash: stash wardrobe and stash container).
 // Needs an open world: prefabs are built from temporary entities that are deleted again. The world is then marked as
 // modified; do not save it (answer No when Workbench asks on the next reload).
 // Existing files are not overwritten.
@@ -16,6 +17,7 @@ class MRX_SampleAssetsPlugin : WorldEditorPlugin
 	static const string STASH_CONTAINER_FILE = "$Marx_Stash:Prefabs/Marx/Stash/MRX_StashContainer.et";
 	static const string ARSENAL_PREFAB_FILE = "$Marx_Shop:Prefabs/Marx/Shop/MRX_ArsenalBox.et";
 	static const ResourceName ARSENAL_BASE_PREFAB = "{54986385A6AF77B2}Prefabs/Props/Military/Arsenal/ArsenalBoxes/ArsenalBox_Base.et";
+	static const string TRADE_CONTAINER_FILE = "$Marx_Shop:Prefabs/Marx/Shop/MRX_ArsenalTradeContainer.et";
 
 	//! Keeps created container resources alive until the plugin finishes.
 	protected ref array<ref Resource> m_aHolders = {};
@@ -33,6 +35,8 @@ class MRX_SampleAssetsPlugin : WorldEditorPlugin
 			CreateInteractivePrefab(SHOP_PREFAB_FILE, SHOP_BASE_PREFAB, "MRX_ShopComponent", shopValues, "MRX_Shop", "MRX_OpenShopAction", "#MRX-Shop_Trade", "0 0.9 0", false);
 			CreateArsenalPrefab(catalog);
 		}
+
+		CreateTradeContainerPrefab();
 
 		// The wardrobe mesh spans x -1.5..0, y 0..2, z 0..0.76 from its origin: the action sits in its middle.
 		CreateInteractivePrefab(STASH_PREFAB_FILE, STASH_BASE_PREFAB, "MRX_StashPointComponent", new map<string, string>(), "MRX_Stash", "MRX_OpenStashAction", "#MRX-Stash_Title", "-0.75 1 0.38", true);
@@ -272,6 +276,73 @@ class MRX_SampleAssetsPlugin : WorldEditorPlugin
 		Log("ItemPhysAttributes", api.CreateObjectVariableMember(source, attributesPath, "ItemPhysAttributes", "ItemPhysicalAttributes"));
 
 		Log("MRX_StashContainerManagerComponent", api.CreateComponent(source, "MRX_StashContainerManagerComponent") != null);
+
+		Log("CreateEntityTemplate", api.CreateEntityTemplate(source, absPath));
+		api.DeleteEntity(source);
+		if (manageAction)
+			api.EndEntityAction();
+
+		Print(TAG + "saved " + GetResourceName(absPath));
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! The arsenal trade container (Marx_Shop): a plain entity without model with replication, a cart and a sale box
+	//! storage (MRX_ArsenalTradeStorageComponent, roles CART and SALE) and the trade container manager. Not saved.
+	protected void CreateTradeContainerPrefab()
+	{
+		string absPath;
+		Workbench.GetAbsolutePath(TRADE_CONTAINER_FILE, absPath, false);
+		if (FileIO.FileExists(absPath))
+		{
+			Print(TAG + "already exists, not overwritten: " + absPath, LogLevel.WARNING);
+			return;
+		}
+
+		WorldEditorAPI api = SCR_WorldEditorToolHelper.GetWorldEditorAPI();
+		if (!api || !api.GetWorld())
+		{
+			Print(TAG + "open a world first", LogLevel.ERROR);
+			return;
+		}
+
+		FileIO.MakeDirectory(FilePath.StripFileName(absPath));
+		bool manageAction = !api.IsDoingEditAction();
+		if (manageAction)
+			api.BeginEntityAction("Marx arsenal trade container");
+
+		IEntitySource source = api.CreateEntity("GenericEntity", string.Empty, api.GetCurrentEntityLayerId(), null, vector.Zero, vector.Zero);
+		if (!source)
+		{
+			Print(TAG + "CreateEntity GenericEntity failed", LogLevel.ERROR);
+			if (manageAction)
+				api.EndEntityAction();
+
+			return;
+		}
+
+		source.ClearVariable("coords");
+		Log("RplComponent", api.CreateComponent(source, "RplComponent") != null);
+
+		array<string> names = {"#MRX-Cart_Title", "#MRX-Cart_TabSell"};
+		foreach (int role, string name : names)
+		{
+			Log("MRX_ArsenalTradeStorageComponent " + role, api.CreateComponent(source, "MRX_ArsenalTradeStorageComponent") != null);
+			array<ref ContainerIdPathEntry> storagePath = { new ContainerIdPathEntry("MRX_ArsenalTradeStorageComponent", role) };
+			Log("m_eRole", api.SetVariableValue(source, storagePath, "m_eRole", role.ToString()));
+			// Without a model the storage's own size is tiny, so the capacity comes from these values, not from the size.
+			Log("UseCapacityCoefficient", api.SetVariableValue(source, storagePath, "UseCapacityCoefficient", "0"));
+			Log("MaxCumulativeVolume", api.SetVariableValue(source, storagePath, "MaxCumulativeVolume", "1000000"));
+			Log("MaxItemSize", api.SetVariableValue(source, storagePath, "MaxItemSize", "300 300 300"));
+			Log("m_fMaxWeight", api.SetVariableValue(source, storagePath, "m_fMaxWeight", "2000"));
+			Log("Attributes", api.CreateObjectVariableMember(source, storagePath, "Attributes", "SCR_ItemAttributeCollection"));
+			array<ref ContainerIdPathEntry> attributesPath = { new ContainerIdPathEntry("MRX_ArsenalTradeStorageComponent", role), new ContainerIdPathEntry("Attributes") };
+			Log("ItemDisplayName", api.CreateObjectVariableMember(source, attributesPath, "ItemDisplayName", "UIInfo"));
+			array<ref ContainerIdPathEntry> namePath = { new ContainerIdPathEntry("MRX_ArsenalTradeStorageComponent", role), new ContainerIdPathEntry("Attributes"), new ContainerIdPathEntry("ItemDisplayName") };
+			Log("ItemDisplayName.Name", api.SetVariableValue(source, namePath, "Name", name));
+			Log("ItemPhysAttributes", api.CreateObjectVariableMember(source, attributesPath, "ItemPhysAttributes", "ItemPhysicalAttributes"));
+		}
+
+		Log("MRX_ArsenalTradeManagerComponent", api.CreateComponent(source, "MRX_ArsenalTradeManagerComponent") != null);
 
 		Log("CreateEntityTemplate", api.CreateEntityTemplate(source, absPath));
 		api.DeleteEntity(source);

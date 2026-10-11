@@ -10,6 +10,10 @@ modded class SCR_InventoryOpenedStorageArsenalUI
 	protected bool m_bMRX_OwnBalanceBar;
 	protected ref MRX_ArsenalFilter m_MRX_Filter;
 	protected ref MRX_ArsenalFilterBar m_MRX_FilterBar;
+	//! Weak: the controller owns the trade.
+	protected MRX_ArsenalTradeClient m_MRX_Trade;
+	//! The panel lists what the arsenal buys back (sale tab of a trade).
+	protected bool m_bMRX_SaleList;
 
 	//------------------------------------------------------------------------------------------------
 	protected MRX_ArsenalShopComponent MRX_GetArsenal()
@@ -60,6 +64,10 @@ modded class SCR_InventoryOpenedStorageArsenalUI
 		if (m_MRX_Controller)
 			m_MRX_Controller.MRX_GetOnShopResult().Insert(MRX_OnShopResult);
 
+		m_MRX_Trade = MRX_ArsenalTradeClient.GetLocal();
+		if (m_MRX_Trade)
+			m_MRX_Trade.GetOnChanged().Insert(MRX_OnTradeChanged);
+
 		RefreshResources();
 	}
 
@@ -72,6 +80,9 @@ modded class SCR_InventoryOpenedStorageArsenalUI
 		if (m_MRX_Controller)
 			m_MRX_Controller.MRX_GetOnShopResult().Remove(MRX_OnShopResult);
 
+		if (m_MRX_Trade)
+			m_MRX_Trade.GetOnChanged().Remove(MRX_OnTradeChanged);
+
 		if (m_MRX_BalanceBar && m_bMRX_OwnBalanceBar)
 			m_MRX_BalanceBar.Stop();
 
@@ -82,8 +93,9 @@ modded class SCR_InventoryOpenedStorageArsenalUI
 	}
 
 	//------------------------------------------------------------------------------------------------
-	//! The catalog items of the chosen category that match the search, in catalog order. The panel lists its slots
-	//! with the arsenal's own storage as pStorage, other calls without one.
+	//! The catalog items of the chosen category that match the search, in catalog order: the items for sale, or in the
+	//! sale tab of a trade the items the arsenal buys back. The panel lists its slots with the arsenal's own storage as
+	//! pStorage, other calls without one.
 	override protected void GetAllItems(out notnull array<IEntity> pItemsInStorage, BaseInventoryStorageComponent pStorage = null)
 	{
 		MRX_ArsenalShopComponent arsenal = MRX_GetArsenal();
@@ -103,7 +115,12 @@ modded class SCR_InventoryOpenedStorageArsenalUI
 		}
 
 		array<MRX_ShopItem> items = {};
-		arsenal.GetListedItems(items);
+		m_bMRX_SaleList = m_MRX_Trade && m_MRX_Trade.IsTradingAt(arsenal) && m_MRX_Trade.IsSaleTab();
+		if (m_bMRX_SaleList)
+			arsenal.GetSellListItems(items);
+		else
+			arsenal.GetListedItems(items);
+
 		foreach (MRX_ShopItem item : items)
 		{
 			if (m_MRX_Filter.Matches(item))
@@ -148,6 +165,32 @@ modded class SCR_InventoryOpenedStorageArsenalUI
 	{
 		m_iLastShownPage = 0;
 		Refresh();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! \return True while the panel lists what the arsenal buys back (sale tab of a trade).
+	bool MRX_IsSaleList()
+	{
+		return m_bMRX_SaleList;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! A switched tab changes the list; new totals change what the balance after the cart covers.
+	protected void MRX_OnTradeChanged()
+	{
+		MRX_ArsenalShopComponent arsenal = MRX_GetArsenal();
+		bool saleList = m_MRX_Trade && m_MRX_Trade.IsTradingAt(arsenal) && m_MRX_Trade.IsSaleTab();
+		if (saleList != m_bMRX_SaleList)
+		{
+			MRX_OnFilterChanged();
+			return;
+		}
+
+		foreach (SCR_InventorySlotUI slot : m_aSlots)
+		{
+			if (slot)
+				slot.Refresh();
+		}
 	}
 
 	//------------------------------------------------------------------------------------------------
