@@ -108,6 +108,13 @@ class MRX_TestRunner : Managed
 	static const string TEST_IDENTITY_PARAM = "mrxTestIdentity";
 	//! Waits for a PeerTool client in MRX_Test_PeerSync instead of skipping it.
 	static const string PEER_TEST_PARAM = "mrxTestsPeer";
+	//! "-mrxTestsFilter <text>": runs only the tests whose class name contains the text (any case).
+	static const string FILTER_PARAM = "mrxTestsFilter";
+	//! First line overrides the filter parameter without a restart; an empty line runs all tests.
+	static const string FILTER_FILE = "$profile:mrx_tests_filter.txt";
+	//! A filtered run starts later: right after game start the Game Master editor still opens and takes the player's
+	//! control back from a character a test possesses (a full run reaches such tests much later).
+	static const int FILTERED_START_DELAY_MS = 6000;
 	static const int AUTO_CLOSE_DELAY_MS = 2000;
 
 	protected static ref MRX_TestRunner s_Instance;
@@ -130,6 +137,7 @@ class MRX_TestRunner : Managed
 		MRX_ShopTests.Register(s_Instance);
 		MRX_ShopEntityTests.Register(s_Instance);
 		MRX_ArsenalShopTests.Register(s_Instance);
+		MRX_ArsenalTradeTests.Register(s_Instance);
 		MRX_StashTests.Register(s_Instance);
 		MRX_StashGridTests.Register(s_Instance);
 		MRX_StashEntityTests.Register(s_Instance);
@@ -138,8 +146,59 @@ class MRX_TestRunner : Managed
 		MRX_NetworkTests.Register(s_Instance);
 		MRX_LoadoutTests.Register(s_Instance);
 		MRX_DebugTests.Register(s_Instance);
+		string filter = GetFilter();
+		if (!filter.IsEmpty())
+		{
+			s_Instance.KeepMatching(filter);
+			Print(TAG + "filter " + filter);
+		}
+
+		// E.g. "none": Play stays open for trying things by hand without a restart.
+		if (s_Instance.m_aTests.IsEmpty())
+		{
+			Print(TAG + "no test matches the filter; none run");
+			s_Instance = null;
+			return;
+		}
+
 		Print(TAG + string.Format("START tests=%1", s_Instance.m_aTests.Count()));
 		s_Instance.RunNext();
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! The filter file's first line if the file exists, else the filter parameter, lower case.
+	static string GetFilter()
+	{
+		string filter;
+		if (FileIO.FileExists(FILTER_FILE))
+		{
+			FileHandle file = FileIO.OpenFile(FILTER_FILE, FileMode.READ);
+			if (file)
+			{
+				file.ReadLine(filter);
+				file.Close();
+			}
+		}
+		else
+		{
+			System.GetCLIParam(FILTER_PARAM, filter);
+		}
+
+		filter.TrimInPlace();
+		filter.ToLower();
+		return filter;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	protected void KeepMatching(string filter)
+	{
+		for (int i = m_aTests.Count() - 1; i >= 0; i--)
+		{
+			string name = m_aTests[i].ClassName();
+			name.ToLower();
+			if (!name.Contains(filter))
+				m_aTests.RemoveOrdered(i);
+		}
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -265,8 +324,14 @@ modded class SCR_BaseGameMode
 	override protected void OnGameStart()
 	{
 		super.OnGameStart();
-		if (Replication.IsServer() && System.IsCLIParam(MRX_TestRunner.RUN_PARAM))
-			GetGame().GetCallqueue().CallLater(MRX_TestRunner.RunAll, 1000);
+		if (!Replication.IsServer() || !System.IsCLIParam(MRX_TestRunner.RUN_PARAM))
+			return;
+
+		int delay = 1000;
+		if (!MRX_TestRunner.GetFilter().IsEmpty())
+			delay += MRX_TestRunner.FILTERED_START_DELAY_MS;
+
+		GetGame().GetCallqueue().CallLater(MRX_TestRunner.RunAll, delay);
 	}
 }
 #endif

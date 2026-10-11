@@ -24,6 +24,10 @@ Workbench-only test harness, so economy tests also run while the Bohemia backend
 .PARAMETER PeerTest
 Passes -mrxTestsPeer: the test harness waits for a PeerTool client and checks the balance push to it.
 
+.PARAMETER TestsFilter
+Passes -mrxTestsFilter <text>: the test harness runs only the tests whose class name contains the text (any
+case). The first line of profile/mrx_tests_filter.txt, when that file exists, overrides it without a restart.
+
 .PARAMETER NoScriptAuthorizeAll
 Do not pass -scriptAuthorizeAll (which suppresses the "Script Authorization Required" prompt).
 
@@ -50,6 +54,7 @@ param(
 	[switch]$AutoCloseTests,
 	[switch]$TestIdentity,
 	[switch]$PeerTest,
+	[string]$TestsFilter,
 	[switch]$NoScriptAuthorizeAll,
 	[string]$WorkbenchExe,
 	[string]$GameDir,
@@ -159,6 +164,12 @@ if ($TestIdentity)
 if ($PeerTest)
 {
 	$arguments += "-mrxTestsPeer"
+}
+
+if ($TestsFilter)
+{
+	$arguments += "-mrxTestsFilter"
+	$arguments += "`"$TestsFilter`""
 }
 
 Write-Host "Workbench: $WorkbenchExe"

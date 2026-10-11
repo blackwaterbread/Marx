@@ -5,7 +5,7 @@
 `tools/launch-workbench.ps1` starts Arma Reforger Workbench with the Marx addons registered, without the launcher:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tools/launch-workbench.ps1 [-Tests] [-AutoCloseTests] [-TestIdentity] [-PeerTest]
+powershell -ExecutionPolicy Bypass -File tools/launch-workbench.ps1 [-Tests] [-AutoCloseTests] [-TestIdentity] [-PeerTest] [-TestsFilter <text>]
 ```
 
 It opens `Marx_Example` (which loads all Marx addons), writes the logs to a new
@@ -20,8 +20,8 @@ when Workbench was started with `-mrxTests`, and logs `[MRX_TEST] PASS|FAIL|SKIP
 - Unit-style tests use the in-memory backend and fake worlds (economy, shop, stash rules and services).
 - Native tests need the Marx persistence config: select `Configs/Marx/Systems/MRX_GameMasterSystems.conf` under
   Play > World Systems Config. Without it they are skipped.
-- Entity tests (shop table, stash round trip, stash point) spawn real prefabs. In Game Master scenarios they spawn a
-  character for the local player and possess it.
+- Entity tests (shop table, stash round trip, stash point, arsenal trade) spawn real prefabs. In Game Master scenarios
+  they spawn a character for the local player and possess it.
 
 Command line switches (passed by the launch script):
 
@@ -31,6 +31,7 @@ Command line switches (passed by the launch script):
 | `-mrxTestsAutoClose` | leaves Play mode 2 s after the run |
 | `-mrxTestIdentity` | players without a backend identity get a name-based test owner, so owner-dependent tests also run while the Bohemia backend is unreachable |
 | `-mrxTestsPeer` | waits up to 120 s for a PeerTool client and checks the balance push to it (otherwise skipped) |
+| `-mrxTestsFilter <text>` | runs only the tests whose class name contains the text (any case), in their usual order, starting 6 s later so a Game Master scenario has settled (launch script: `-TestsFilter`). The first line of `profile/mrx_tests_filter.txt`, when that file exists, overrides it without a restart; an empty line runs all tests, a text that matches no test (e.g. `none`) runs none and leaves Play mode open for trying things by hand. |
 
 Typical loop: open `worlds/GameMaster/GM_Arland.ent`, press Play, read the `[MRX_TEST]` lines in the log.
 
@@ -76,6 +77,7 @@ Every result is logged as `[MRX_DBG] <action ID> <STATUS> <text>`. Server parts 
 | `loadout.addslot` | | unlocks one more loadout slot (shown from the next opening of the stash) |
 | `sample.product` | | Example, Workbench only: adds a sample product to the nearest shop |
 | `sample.prices` | | Example, Workbench only: sets the test prices as the price list |
+| `sample.arsenal` | | Example, Workbench only: gives you a character if you have none (Game Master), puts the sample arsenal box with a weapon catalog in front of you (or takes the nearest Marx arsenal), adds a rifle, a bandage and binoculars of your own to sell and opens the inventory at it |
 
 ## Workbench plugins (Plugins > Marx)
 
