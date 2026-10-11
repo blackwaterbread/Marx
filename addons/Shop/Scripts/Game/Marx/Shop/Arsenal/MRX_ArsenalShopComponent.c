@@ -19,7 +19,7 @@ class MRX_ArsenalShopComponent : ScriptComponent
 	[Attribute("8", UIWidgets.EditBox, "Columns of the cart and of the sale box (with a cart). Each holds one page.", params: "1 12")]
 	protected int m_iCartColumns;
 
-	[Attribute("4", UIWidgets.EditBox, "Rows of the cart and of the sale box (with a cart). Each holds one page; the middle of the inventory shows an opened item of theirs below them.", params: "1 12")]
+	[Attribute("6", UIWidgets.EditBox, "Rows of the cart and of the sale box (with a cart). Each holds one page.", params: "1 12")]
 	protected int m_iCartRows;
 
 	protected MRX_ShopComponent m_Shop;

@@ -1,7 +1,8 @@
 //! Panel of an arsenal trade (MRX_ArsenalTradeClient) in the middle of the inventory, where the character is shown
 //! otherwise: the tabs (buy, sell), the vanilla storage panel of the cart or the sale box, the space below it, the
 //! totals and the hold button of the checkout, as wide as the cart. The space below shows a storage of an item of the
-//! trade (ToggleDetail). Mouse for the tabs and the button; the storage panels work like any other. Internal.
+//! trade (ToggleDetail); the cart or the sale box folds to half its rows meanwhile. Mouse for the tabs and the button;
+//! the storage panels work like any other. Internal.
 class MRX_ArsenalTradePanel : Managed
 {
 	protected static const ResourceName STORAGE_LAYOUT = "{E61475CBB560757F}UI/layouts/Menus/Inventory/InventoryContainerGrid.layout";
@@ -32,6 +33,8 @@ class MRX_ArsenalTradePanel : Managed
 	protected Widget m_wFreeArea;
 	protected Widget m_wDetailWidget;
 	protected ref MRX_ArsenalTradeDetailStorageUI m_DetailUI;
+	//! Weak: the storage panel folded for the storage below (m_CartUI or m_SaleUI owns it).
+	protected MRX_ArsenalTradeStorageUI m_FoldedUI;
 	protected bool m_bShownSaleTab;
 	protected Widget m_wTotals;
 	protected TextWidget m_wStatus;
@@ -105,7 +108,8 @@ class MRX_ArsenalTradePanel : Managed
 
 	//------------------------------------------------------------------------------------------------
 	//! Shows a storage of an item of the trade (e.g. a backpack in the cart, a weapon's attachments) in the space below
-	//! the storage panel, or closes it when it is shown there. Paged to the rows that fit. \return True when shown.
+	//! the storage panel, or closes it when it is shown there. The storage panel folds to half its rows for it (the rest
+	//! on further pages); the storage below is paged to the rows that fit. \return True when shown.
 	bool ToggleDetail(notnull BaseInventoryStorageComponent storage)
 	{
 		if (m_DetailUI && m_DetailUI.GetStorage() == storage)
@@ -115,13 +119,28 @@ class MRX_ArsenalTradePanel : Managed
 		}
 
 		CloseDetail();
+		// The space the folded rows free comes on top of the space below now (the layout follows a frame later).
+		int rows = m_Arsenal.GetCartRows();
+		int folded = rows / 2;
+		if (folded < 1)
+			folded = 1;
+
+		float freed;
+		MRX_ArsenalTradeStorageUI shown = GetShownStorageUI();
+		if (shown && folded < rows)
+		{
+			shown.MRX_SetRows(folded);
+			m_FoldedUI = shown;
+			freed = (rows - folded) * CELL_SIZE;
+		}
+
 		float width, height;
 		m_wFreeArea.GetScreenSize(width, height);
-		float available = GetGame().GetWorkspace().DPIUnscale(height) - STORAGE_CHROME_HEIGHT;
-		int rows = 1;
-		while ((rows + 1) * CELL_SIZE <= available)
+		float available = GetGame().GetWorkspace().DPIUnscale(height) + freed - STORAGE_CHROME_HEIGHT;
+		int detailRows = 1;
+		while ((detailRows + 1) * CELL_SIZE <= available)
 		{
-			rows++;
+			detailRows++;
 		}
 
 		m_wDetailWidget = GetGame().GetWorkspace().CreateWidgets(STORAGE_LAYOUT, m_wFreeArea);
@@ -130,7 +149,7 @@ class MRX_ArsenalTradePanel : Managed
 
 		AlignableSlot.SetHorizontalAlign(m_wDetailWidget, LayoutHorizontalAlign.Center);
 		AlignableSlot.SetVerticalAlign(m_wDetailWidget, LayoutVerticalAlign.Top);
-		m_DetailUI = new MRX_ArsenalTradeDetailStorageUI(storage, null, m_Menu, 0, {storage}, m_Arsenal.GetCartColumns(), rows);
+		m_DetailUI = new MRX_ArsenalTradeDetailStorageUI(storage, null, m_Menu, 0, {storage}, m_Arsenal.GetCartColumns(), detailRows);
 		m_wDetailWidget.AddHandler(m_DetailUI);
 		m_DetailUI.ActivateCloseStorageButton();
 		return true;
@@ -149,6 +168,10 @@ class MRX_ArsenalTradePanel : Managed
 
 		m_wDetailWidget = null;
 		m_DetailUI = null;
+		if (m_FoldedUI)
+			m_FoldedUI.MRX_SetRows(m_Arsenal.GetCartRows());
+
+		m_FoldedUI = null;
 	}
 
 	//------------------------------------------------------------------------------------------------
@@ -573,6 +596,29 @@ class MRX_ArsenalTradeStorageUI : SCR_InventoryOpenedStorageUI
 	MRX_ArsenalTradeStorageComponent GetTradeStorage()
 	{
 		return MRX_ArsenalTradeStorageComponent.Cast(m_Storage);
+	}
+
+	//------------------------------------------------------------------------------------------------
+	int MRX_GetRows()
+	{
+		return m_iMaxRows;
+	}
+
+	//------------------------------------------------------------------------------------------------
+	//! Shows the storage in other rows (MRX_ArsenalTradePanel folds it while an item storage is open below it); what does
+	//! not fit goes to further pages.
+	void MRX_SetRows(int rows)
+	{
+		if (rows < 1 || rows == m_iMaxRows)
+			return;
+
+		m_iMaxRows = rows;
+		m_iPageSize = m_iMaxRows * m_iMaxColumns;
+		m_iMatrix = new SCR_Matrix(m_iMaxColumns, m_iMaxRows);
+		// The empty cells first: Refresh rebuilds the item slots after them, the order vanilla ShowPage expects.
+		CreateEmptyLayout(true);
+		SetRowsAndColumns();
+		Refresh();
 	}
 
 	//------------------------------------------------------------------------------------------------

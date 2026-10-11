@@ -130,8 +130,9 @@ them instead of the character, with Buy and Sell tabs, the totals and a button h
   below the cart, the item goes into it (a weapon takes it into a free attachment slot that fits). Dropped elsewhere,
   it goes to a free cell. Items of the cart dragged back onto the arsenal (or X) leave the cart.
 - The cart or the sale box stays in view; double click or middle mouse on one of their items opens its storage below
-  it (e.g. a backpack's contents or a weapon's attachments), where items and parts are dragged in and out. Items of the
-  trade are not inspected (I); inspecting a weapon of the player's own takes the middle as without a trade.
+  it (e.g. a backpack's contents or a weapon's attachments), where items and parts are dragged in and out. Meanwhile the
+  cart or the sale box shows half its rows (the rest on further pages). Items of the trade are not inspected (I);
+  inspecting a weapon of the player's own takes the middle as without a trade.
 - Prices: an item costs its catalog price; the parts it comes with (e.g. a rifle's magazine) are included and cost
   nothing in the weapon or in the cart's cells. Put into another weapon of the cart, such a part costs its catalog price
   (parts the arsenal does not sell cannot go there). Arsenal slots show what the balance after the cart still covers.
@@ -141,7 +142,7 @@ them instead of the character, with Buy and Sell tabs, the totals and a button h
   shows its sale price with what it holds (issued items and items the shop does not buy show 0 and are disposed of when
   sold). The arsenal lists what it buys back meanwhile, items not for sale included. Items dragged out of the sale box
   go back; X gives them back where they were. Checkout deletes the items and pays the total at once.
-- The cart and the sale box hold one page each (`m_iCartColumns` × `m_iCartRows`, 8 × 4 by default).
+- The cart and the sale box hold one page each (`m_iCartColumns` × `m_iCartRows`, 8 × 6 by default).
 - Closing the inventory, walking away, dying or leaving empties the cart and gives the sale box back (at the character's
   feet when the inventory is full; the player is told). Mods that save a leaving player's gear call
   `MRX_ArsenalTrades.Get().Close(playerId, reason)` first, so the items for sale are saved with it.

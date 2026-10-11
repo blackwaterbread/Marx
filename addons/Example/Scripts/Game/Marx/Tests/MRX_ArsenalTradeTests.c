@@ -924,16 +924,38 @@ class MRX_Test_ArsenalTradePanel : MRX_TestCase
 
 		int openedCount = menu.MRX_TestGetOpenedStorageCount();
 		BaseInventoryStorageComponent rifleStorage = rifleSlot.GetAsStorage();
+		MRX_ArsenalTradeStorageUI cartUI = panel.GetStorageUI(false);
+		int rows = MRX_ArsenalShopComponent.Find(m_Arsenal).GetCartRows();
 		menu.MRX_TestOpenAsContainer(rifleSlot);
 		Check(panel.GetDetailStorageUI() && panel.GetDetailStorageUI().GetStorage() == rifleStorage, "middle mouse opens the rifle's attachments below the cart");
 		CheckInt(menu.MRX_TestGetOpenedStorageCount(), openedCount, "storages opened on the left");
+		Check(cartUI.MRX_GetRows() < rows, "the cart folds while the storage below is open");
+		// The fold rebuilds the cart's slots, as the player's next hover finds them.
+		rifleSlot = FindSlot(cartUI, MRX_Test_ArsenalShopFlow.RIFLE);
+		if (!rifleSlot)
+		{
+			Check(false, "the folded cart shows the rifle");
+			End(true);
+			return;
+		}
+
 		menu.MRX_TestOpenStorage(rifleSlot);
 		Check(!panel.GetDetailStorageUI(), "double click on the item shown below closes it");
-		Check(panel.GetStorageUI(false).GetCurrentNavigationStorage() == m_Trade.GetCartStorage(), "the cart panel stays on the cart");
+		CheckInt(cartUI.MRX_GetRows(), rows, "cart rows after the storage below closes");
+		Check(cartUI.GetCurrentNavigationStorage() == m_Trade.GetCartStorage(), "the cart panel stays on the cart");
+		rifleSlot = FindSlot(cartUI, MRX_Test_ArsenalShopFlow.RIFLE);
+		if (!rifleSlot)
+		{
+			Check(false, "the unfolded cart shows the rifle");
+			End(true);
+			return;
+		}
+
 		menu.MRX_TestOpenStorage(rifleSlot);
 		Check(panel.GetDetailStorageUI() && panel.GetDetailStorageUI().GetStorage() == rifleStorage, "double click opens the rifle's attachments below the cart");
 		menu.InspectItem(rifleSlot);
 		Check(menu.GetGearInspectionUI() && !panel.GetDetailStorageUI(), "an inspection closes the storage below the cart");
+		CheckInt(cartUI.MRX_GetRows(), rows, "cart rows after an inspection closed the storage below");
 		menu.InspectItem(null);
 
 		array<ResourceName> ownPrefabs = {MRX_Test_ArsenalShopFlow.BANDAGE, MRX_Test_ArsenalShopFlow.RIFLE, BINOCULARS};
